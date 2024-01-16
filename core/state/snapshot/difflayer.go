@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	bloomfilter "github.com/holiman/bloomfilter/v2"
 )
@@ -75,6 +76,10 @@ var (
 	bloomDestructHasherOffset = 0
 	bloomAccountHasherOffset  = 0
 	bloomStorageHasherOffset  = 0
+)
+
+var (
+	perfGetSnapshotDiffLayerAccountTimer = metrics.NewRegisteredTimer("perf/get/snapshot/diff/layer/account/time", nil)
 )
 
 func init() {
@@ -273,6 +278,8 @@ func (dl *diffLayer) Stale() bool {
 // Account directly retrieves the account associated with a particular hash in
 // the snapshot slim data format.
 func (dl *diffLayer) Account(hash common.Hash) (*Account, error) {
+	start := time.Now()
+	defer perfGetSnapshotDiffLayerAccountTimer.UpdateSince(start)
 	data, err := dl.AccountRLP(hash)
 	if err != nil {
 		return nil, err

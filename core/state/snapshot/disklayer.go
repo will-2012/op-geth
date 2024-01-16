@@ -19,13 +19,19 @@ package snapshot
 import (
 	"bytes"
 	"sync"
+	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/ethdb"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
+)
+
+var (
+	perfGetSnapshotDiskLayerAccountTimer = metrics.NewRegisteredTimer("perf/get/snapshot/disk/layer/account/time", nil)
 )
 
 // diskLayer is a low level persistent snapshot built on top of a key-value store.
@@ -66,6 +72,8 @@ func (dl *diskLayer) Stale() bool {
 // Account directly retrieves the account associated with a particular hash in
 // the snapshot slim data format.
 func (dl *diskLayer) Account(hash common.Hash) (*Account, error) {
+	start := time.Now()
+	defer perfGetSnapshotDiskLayerAccountTimer.UpdateSince(start)
 	data, err := dl.AccountRLP(hash)
 	if err != nil {
 		return nil, err
