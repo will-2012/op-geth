@@ -89,12 +89,12 @@ func ParseGeneratorStatus(generatorBlob []byte) string {
 		generator.Done, generator.Accounts, generator.Slots, generator.Storage, m)
 }
 
-// loadAndParseJournal tries to parse the snapshot journal in latest format.
+// loadAndParseJournal tries to parse the snapshot journal in the latest format.
 func loadAndParseJournal(db ethdb.KeyValueStore, base *diskLayer) (snapshot, journalGenerator, error) {
 	// Retrieve the disk layer generator. It must exist, no matter the
-	// snapshot is fully generated or not. Otherwise the entire disk
+	// snapshot is fully generated or not. Otherwise, the entire disk
 	// layer is invalid.
-	generatorBlob := rawdb.ReadSnapshotGenerator(db)
+	generatorBlob := rawdb.ReadSnapshotGenerator(db) // ??
 	if len(generatorBlob) == 0 {
 		return nil, journalGenerator{}, errors.New("missing snapshot generator")
 	}
@@ -106,7 +106,7 @@ func loadAndParseJournal(db ethdb.KeyValueStore, base *diskLayer) (snapshot, jou
 	// not existent, e.g. the disk layer is generating while that the Geth
 	// crashes without persisting the diff journal.
 	// So if there is no journal, or the journal is invalid(e.g. the journal
-	// is not matched with disk layer; or the it's the legacy-format journal,
+	// is not matched with disk layer; or it's the legacy-format journal,
 	// etc.), we just discard all diffs and try to recover them later.
 	var current snapshot = base
 	err := iterateJournal(db, func(parent common.Hash, root common.Hash, destructSet map[common.Hash]struct{}, accountData map[common.Hash][]byte, storageData map[common.Hash]map[common.Hash][]byte) error {
@@ -273,9 +273,9 @@ func (dl *diffLayer) Journal(buffer *bytes.Buffer) (common.Hash, error) {
 // time a difflayer is loaded from disk.
 type journalCallback = func(parent common.Hash, root common.Hash, destructs map[common.Hash]struct{}, accounts map[common.Hash][]byte, storage map[common.Hash]map[common.Hash][]byte) error
 
-// iterateJournal iterates through the journalled difflayers, loading them from
+// iterateJournal iterates through the journaled diff layers, loading them from
 // the database, and invoking the callback for each loaded layer.
-// The order is incremental; starting with the bottom-most difflayer, going towards
+// The order is incremental; starting with the bottom-most diff layer, going towards
 // the most recent layer.
 // This method returns error either if there was some error reading from disk,
 // OR if the callback returns an error when invoked.

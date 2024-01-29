@@ -1052,6 +1052,7 @@ func (pool *TxPool) AddRemote(tx *types.Transaction) error {
 }
 
 // addTxs attempts to queue a batch of transactions if they are valid.
+// ??
 func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 	// Filter out known ones without obtaining the pool lock or recovering signatures
 	var (
@@ -2024,6 +2025,7 @@ func (t *lookup) RemotesBelowTip(threshold *big.Int) types.Transactions {
 }
 
 // numSlots calculates the number of slots needed for a single transaction.
+// ??
 func numSlots(tx *types.Transaction) int {
 	return int((tx.Size() + txSlotSize - 1) / txSlotSize)
 }

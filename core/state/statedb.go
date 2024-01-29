@@ -1111,6 +1111,7 @@ func (s *StateDB) Commit(deleteEmptyObjects bool, postCommitFuncs ...func() erro
 				start := time.Now()
 				// Only update if there's a state transition (skip empty Clique blocks)
 				if parent := s.snap.Root(); parent != root {
+					// TODO
 					if err := s.snaps.Update(root, parent, s.convertAccountSet(s.stateObjectsDestruct), s.snapAccounts, s.snapStorage); err != nil {
 						log.Warn("Failed to update snapshot tree", "from", parent, "to", root, "err", err)
 					}

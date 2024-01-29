@@ -36,25 +36,25 @@ import (
 var (
 	snapshotCleanAccountHitMeter   = metrics.NewRegisteredMeter("state/snapshot/clean/account/hit", nil)
 	snapshotCleanAccountMissMeter  = metrics.NewRegisteredMeter("state/snapshot/clean/account/miss", nil)
-	snapshotCleanAccountInexMeter  = metrics.NewRegisteredMeter("state/snapshot/clean/account/inex", nil)
+	snapshotCleanAccountIndexMeter = metrics.NewRegisteredMeter("state/snapshot/clean/account/index", nil)
 	snapshotCleanAccountReadMeter  = metrics.NewRegisteredMeter("state/snapshot/clean/account/read", nil)
 	snapshotCleanAccountWriteMeter = metrics.NewRegisteredMeter("state/snapshot/clean/account/write", nil)
 
 	snapshotCleanStorageHitMeter   = metrics.NewRegisteredMeter("state/snapshot/clean/storage/hit", nil)
 	snapshotCleanStorageMissMeter  = metrics.NewRegisteredMeter("state/snapshot/clean/storage/miss", nil)
-	snapshotCleanStorageInexMeter  = metrics.NewRegisteredMeter("state/snapshot/clean/storage/inex", nil)
+	snapshotCleanStorageIndexMeter = metrics.NewRegisteredMeter("state/snapshot/clean/storage/index", nil)
 	snapshotCleanStorageReadMeter  = metrics.NewRegisteredMeter("state/snapshot/clean/storage/read", nil)
 	snapshotCleanStorageWriteMeter = metrics.NewRegisteredMeter("state/snapshot/clean/storage/write", nil)
 
 	snapshotDirtyAccountHitMeter   = metrics.NewRegisteredMeter("state/snapshot/dirty/account/hit", nil)
 	snapshotDirtyAccountMissMeter  = metrics.NewRegisteredMeter("state/snapshot/dirty/account/miss", nil)
-	snapshotDirtyAccountInexMeter  = metrics.NewRegisteredMeter("state/snapshot/dirty/account/inex", nil)
+	snapshotDirtyAccountIndexMeter = metrics.NewRegisteredMeter("state/snapshot/dirty/account/index", nil)
 	snapshotDirtyAccountReadMeter  = metrics.NewRegisteredMeter("state/snapshot/dirty/account/read", nil)
 	snapshotDirtyAccountWriteMeter = metrics.NewRegisteredMeter("state/snapshot/dirty/account/write", nil)
 
 	snapshotDirtyStorageHitMeter   = metrics.NewRegisteredMeter("state/snapshot/dirty/storage/hit", nil)
 	snapshotDirtyStorageMissMeter  = metrics.NewRegisteredMeter("state/snapshot/dirty/storage/miss", nil)
-	snapshotDirtyStorageInexMeter  = metrics.NewRegisteredMeter("state/snapshot/dirty/storage/inex", nil)
+	snapshotDirtyStorageIndexMeter = metrics.NewRegisteredMeter("state/snapshot/dirty/storage/index", nil)
 	snapshotDirtyStorageReadMeter  = metrics.NewRegisteredMeter("state/snapshot/dirty/storage/read", nil)
 	snapshotDirtyStorageWriteMeter = metrics.NewRegisteredMeter("state/snapshot/dirty/storage/write", nil)
 
@@ -164,8 +164,8 @@ type Config struct {
 //
 // The goal of a state snapshot is twofold: to allow direct access to account and
 // storage data to avoid expensive multi-level trie lookups; and to allow sorted,
-// cheap iteration of the account/storage tries for sync aid.
-type Tree struct {
+// cheap iteration of the account/storage tries for sync aid. --->sync
+type Tree struct { // todo
 	config   Config                   // Snapshots configurations
 	diskdb   ethdb.KeyValueStore      // Persistent database to store the snapshot
 	triedb   *trie.Database           // In-memory cache to access the trie through
@@ -209,7 +209,7 @@ func New(config Config, diskdb ethdb.KeyValueStore, triedb *trie.Database, root 
 		config:   config,
 		diskdb:   diskdb,
 		triedb:   triedb,
-		capLimit: 128,
+		capLimit: 128, // todo by arg
 		layers:   make(map[common.Hash]snapshot),
 	}
 	for _, opt := range opts {
