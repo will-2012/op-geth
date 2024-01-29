@@ -37,8 +37,8 @@ type diskLayer struct {
 	root  common.Hash // Root hash of the base snapshot
 	stale bool        // Signals that the layer became stale (state progressed)
 
+	genPending chan struct{}             // Notification channel when generation is done (test synchronicity) ---just for test
 	genMarker  []byte                    // Marker for the state that's indexed during initial layer generation
-	genPending chan struct{}             // Notification channel when generation is done (test synchronicity)
 	genAbort   chan chan *generatorStats // Notification channel to abort generating the snapshot in this layer
 
 	lock sync.RWMutex
@@ -113,7 +113,7 @@ func (dl *diskLayer) AccountRLP(hash common.Hash) ([]byte, error) {
 	if n := len(blob); n > 0 {
 		snapshotCleanAccountWriteMeter.Mark(int64(n))
 	} else {
-		snapshotCleanAccountInexMeter.Mark(1)
+		snapshotCleanAccountIndexMeter.Mark(1)
 	}
 	return blob, nil
 }
@@ -153,7 +153,7 @@ func (dl *diskLayer) Storage(accountHash, storageHash common.Hash) ([]byte, erro
 	if n := len(blob); n > 0 {
 		snapshotCleanStorageWriteMeter.Mark(int64(n))
 	} else {
-		snapshotCleanStorageInexMeter.Mark(1)
+		snapshotCleanStorageIndexMeter.Mark(1)
 	}
 	return blob, nil
 }
