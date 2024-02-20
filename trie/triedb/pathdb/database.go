@@ -155,7 +155,6 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 		config = Defaults
 	}
 	config = config.sanitize()
-
 	db := &Database{
 		readOnly:   config.ReadOnly,
 		bufferSize: config.DirtyCacheSize,
