@@ -78,6 +78,7 @@ type trienodebuffer interface {
 }
 
 func NewTrieNodeBuffer(sync bool, limit int, nodes map[common.Hash]map[string]*trienode.Node, layers uint64) trienodebuffer {
+	limit = MaxDirtyBufferSize
 	if sync {
 		log.Info("new sync node buffer", "limit", common.StorageSize(limit), "layers", layers)
 		return newNodeBuffer(limit, nodes, layers)

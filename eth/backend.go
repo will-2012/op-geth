@@ -132,8 +132,9 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 			config.TrieCleanCache += config.TrieDirtyCache
 		}
 		config.TrieDirtyCache = 0
+		// TODO, op-geth is archive mode
 	}
-	log.Info("Allocated trie memory caches", "clean", common.StorageSize(config.TrieCleanCache)*1024*1024, "dirty", common.StorageSize(config.TrieDirtyCache)*1024*1024)
+	log.Info("Allocated memory caches", "tire_clean_cache_size", common.StorageSize(config.TrieCleanCache)*1024*1024, "tire_dirty_cache_size", common.StorageSize(config.TrieDirtyCache)*1024*1024, "snapshot_cache_size", common.StorageSize(config.SnapshotCache)*1024*1024)
 
 	// Assemble the Ethereum object
 	chainDb, err := stack.OpenDatabaseWithFreezer("chaindata", config.DatabaseCache, config.DatabaseHandles, config.DatabaseFreezer, "eth/db/chaindata/", false)

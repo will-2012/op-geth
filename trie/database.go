@@ -110,7 +110,7 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 	}
 	var preimages *preimageStore
 	if config.Preimages {
-		preimages = newPreimageStore(diskdb)
+		preimages = newPreimageStore(diskdb) // ??
 	}
 	db := &Database{
 		config:    config,

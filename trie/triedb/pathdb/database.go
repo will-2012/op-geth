@@ -60,6 +60,12 @@ const (
 	// DefaultBatchRedundancyRate defines the batch size, compatible write
 	// size calculation is inaccurate
 	DefaultBatchRedundancyRate = 1.1
+
+	// MaxDirtyBufferSize is the maximum memory allowance of node buffer.
+	// Too large nodebuffer will cause the system to pause for a long
+	// time when write happens. Also, the largest batch that pebble can
+	// support is 4GB, node will panic if batch size exceeds this limit.
+	MaxDirtyBufferSize = 256 * 1024 * 1024
 )
 
 // layer is the interface implemented by all state layers which includes some
@@ -155,7 +161,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 		config = Defaults
 	}
 	config = config.sanitize()
-
+	// config.CleanCacheSize = MaxDirtyBufferSize * 4 * 4 //  4GB??
 	db := &Database{
 		readOnly:   config.ReadOnly,
 		bufferSize: config.DirtyCacheSize,
