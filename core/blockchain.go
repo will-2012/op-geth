@@ -94,6 +94,12 @@ var (
 	errChainStopped         = errors.New("blockchain is stopped")
 	errInvalidOldChain      = errors.New("invalid old chain")
 	errInvalidNewChain      = errors.New("invalid new chain")
+
+	// perf writeBlockWithState
+	perfCommitPhase1Timer = metrics.NewRegisteredTimer("perf/commit/phase1/time", nil)
+	perfCommitPhase2Timer = metrics.NewRegisteredTimer("perf/commit/phase2/time", nil)
+	perfCommitPhase3Timer = metrics.NewRegisteredTimer("perf/commit/phase3/time", nil)
+	perfCommitPhase4Timer = metrics.NewRegisteredTimer("perf/commit/phase4/time", nil)
 )
 
 const (
@@ -1420,6 +1426,7 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 // writeBlockWithState writes block, metadata and corresponding state data to the
 // database.
 func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
+	startPhase1 := time.Now()
 	// Calculate the total difficulty of the block
 	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 	if ptd == nil {
@@ -1440,11 +1447,16 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
+	perfCommitPhase1Timer.UpdateSince(startPhase1)
+
+	startPhase2 := time.Now()
 	// Commit all cached state changes into underlying memory database.
 	root, err := state.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()))
 	if err != nil {
 		return err
 	}
+	perfCommitPhase2Timer.UpdateSince(startPhase2)
+
 	// If node is running in path mode, skip explicit gc operation
 	// which is unnecessary in this mode.
 	if bc.triedb.Scheme() == rawdb.PathScheme {
@@ -1452,8 +1464,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 	// If we're running an archive node, always flush
 	if bc.cacheConfig.TrieDirtyDisabled {
-		return bc.triedb.Commit(root, false)
+		startPhase3 := time.Now()
+		err = bc.triedb.Commit(root, false)
+		perfCommitPhase3Timer.UpdateSince(startPhase3)
+		return err
 	}
+	startPhase4 := time.Now()
+	defer perfCommitPhase4Timer.UpdateSince(startPhase4)
 	// Full but not archive node, do proper garbage collection
 	bc.triedb.Reference(root, common.Hash{}) // metadata reference to keep trie alive
 	bc.triegc.Push(root, -int64(block.NumberU64()))
