@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/eth/etherror"
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -72,6 +73,9 @@ var errTerminated = errors.New("terminated")
 // errReorgDenied is returned if an attempt is made to extend the beacon chain
 // with a new header, but it does not link up to the existing sync.
 var errReorgDenied = errors.New("non-forced head reorg denied")
+
+// maxBlockNumGapTolerance is the max gap tolerance by peer
+var maxBlockNumGapTolerance = uint64(30)
 
 func init() {
 	// Tuning parameters is nice, but the scratch space must be assignable in
@@ -367,13 +371,31 @@ func (s *skeleton) sync(head *types.Header) (*types.Header, error) {
 		s.filler.resume()
 	}
 	defer func() {
-		if filled := s.filler.suspend(); filled != nil {
-			// If something was filled, try to delete stale sync helpers. If
-			// unsuccessful, warn the user, but not much else we can do (it's
-			// a programming error, just let users report an issue and don't
-			// choke in the meantime).
-			if err := s.cleanStales(filled); err != nil {
-				log.Error("Failed to clean stale beacon headers", "err", err)
+		// The filler needs to be suspended, but since it can block for a while
+		// when there are many blocks queued up for full-sync importing, run it
+		// on a separate goroutine and consume head messages that need instant
+		// replies.
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			if filled := s.filler.suspend(); filled != nil {
+				// If something was filled, try to delete stale sync helpers. If
+				// unsuccessful, warn the user, but not much else we can do (it's
+				// a programming error, just let users report an issue and don't
+				// choke in the meantime).
+				if err := s.cleanStales(filled); err != nil {
+					log.Error("Failed to clean stale beacon headers", "err", err)
+				}
+			}
+		}()
+		// Wait for the suspend to finish, consuming head events in the meantime
+		// and dropping them on the floor.
+		for {
+			select {
+			case <-done:
+				return
+			case event := <-s.headEvents:
+				event.errc <- errors.New("beacon syncer reorging")
 			}
 		}
 	}()
@@ -405,7 +427,7 @@ func (s *skeleton) sync(head *types.Header) (*types.Header, error) {
 	for _, peer := range s.peers.AllPeers() {
 		s.idles[peer.id] = peer
 	}
-	// Nofity any tester listening for startup events
+	// Notify any tester listening for startup events
 	if s.syncStarting != nil {
 		s.syncStarting()
 	}
@@ -630,7 +652,7 @@ func (s *skeleton) processNewHead(head *types.Header, final *types.Header, force
 	}
 	if parent := rawdb.ReadSkeletonHeader(s.db, number-1); parent.Hash() != head.ParentHash {
 		if force {
-			log.Warn("Beacon chain forked", "ancestor", parent.Number, "hash", parent.Hash(), "want", head.ParentHash)
+			log.Warn("Beacon chain forked", "ancestor", number-1, "hash", parent.Hash(), "want", head.ParentHash)
 		}
 		return true
 	}
@@ -776,7 +798,7 @@ func (s *skeleton) executeTask(peer *peerConnection, req *headerRequest) {
 
 	case res := <-resCh:
 		// Headers successfully retrieved, update the metrics
-		headers := *res.Res.(*eth.BlockHeadersPacket)
+		headers := *res.Res.(*eth.BlockHeadersRequest)
 
 		headerReqTimer.Update(time.Since(start))
 		s.peers.rates.Update(peer.id, eth.BlockHeadersMsg, res.Time, len(headers))
@@ -786,25 +808,29 @@ func (s *skeleton) executeTask(peer *peerConnection, req *headerRequest) {
 		case len(headers) == 0:
 			// No headers were delivered, reject the response and reschedule
 			peer.log.Debug("No headers delivered")
-			res.Done <- errors.New("no headers delivered")
+			res.Done <- etherror.ErrNoHeadersDelivered
 			s.scheduleRevertRequest(req)
 
 		case headers[0].Number.Uint64() != req.head:
 			// Header batch anchored at non-requested number
 			peer.log.Debug("Invalid header response head", "have", headers[0].Number, "want", req.head)
-			res.Done <- errors.New("invalid header batch anchor")
+			if req.head-headers[0].Number.Uint64() < maxBlockNumGapTolerance {
+				res.Done <- etherror.ErrHeaderBatchAnchorLow
+			} else {
+				res.Done <- etherror.ErrInvalidHeaderBatchAnchor
+			}
 			s.scheduleRevertRequest(req)
 
 		case req.head >= requestHeaders && len(headers) != requestHeaders:
 			// Invalid number of non-genesis headers delivered, reject the response and reschedule
 			peer.log.Debug("Invalid non-genesis header count", "have", len(headers), "want", requestHeaders)
-			res.Done <- errors.New("not enough non-genesis headers delivered")
+			res.Done <- etherror.ErrNotEnoughNonGenesisHeaders
 			s.scheduleRevertRequest(req)
 
 		case req.head < requestHeaders && uint64(len(headers)) != req.head:
 			// Invalid number of genesis headers delivered, reject the response and reschedule
 			peer.log.Debug("Invalid genesis header count", "have", len(headers), "want", headers[0].Number.Uint64())
-			res.Done <- errors.New("not enough genesis headers delivered")
+			res.Done <- etherror.ErrNotEnoughGenesisHeaders
 			s.scheduleRevertRequest(req)
 
 		default:
@@ -813,7 +839,7 @@ func (s *skeleton) executeTask(peer *peerConnection, req *headerRequest) {
 			for i := 0; i < len(headers)-1; i++ {
 				if headers[i].ParentHash != headers[i+1].Hash() {
 					peer.log.Debug("Invalid hash progression", "index", i, "wantparenthash", headers[i].ParentHash, "haveparenthash", headers[i+1].Hash())
-					res.Done <- errors.New("invalid hash progression")
+					res.Done <- etherror.ErrInvalidHashProgression
 					s.scheduleRevertRequest(req)
 					return
 				}
