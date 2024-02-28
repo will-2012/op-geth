@@ -199,12 +199,12 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 
 // Put inserts the given value into the key-value store.
 func (db *Database) Put(key []byte, value []byte) error {
-	return db.db.Put(key, value, nil)
+	return db.db.Put(key, value, &opt.WriteOptions{Sync: true})
 }
 
 // Delete removes the key from the key-value store.
 func (db *Database) Delete(key []byte) error {
-	return db.db.Delete(key, nil)
+	return db.db.Delete(key, &opt.WriteOptions{Sync: true})
 }
 
 // NewBatch creates a write-only key-value store that buffers changes to its host
@@ -414,7 +414,7 @@ func (b *batch) ValueSize() int {
 
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
-	return b.db.Write(b.b, nil)
+	return b.db.Write(b.b, &opt.WriteOptions{Sync: true})
 }
 
 // Reset resets the batch for reuse.
