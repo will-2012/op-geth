@@ -42,6 +42,13 @@ const (
 	storageDeleteLimit = 512 * 1024 * 1024
 )
 
+var (
+	perfGetStateObjectTimer   = metrics.NewRegisteredTimer("perf/get/state/object/time", nil)
+	perfIntermediateRootTimer = metrics.NewRegisteredTimer("perf/intermediate/root/time", nil)
+	perfStateDBCommitTimer    = metrics.NewRegisteredTimer("perf/state/db/commit/time", nil)
+	perfStateDBFinaliseTimer  = metrics.NewRegisteredTimer("perf/state/db/finalise/time", nil)
+)
+
 type revision struct {
 	id           int
 	journalIndex int
@@ -547,6 +554,8 @@ func (s *StateDB) deleteStateObject(obj *stateObject) {
 // the object is not found or was deleted in this execution context. If you need
 // to differentiate between non-existent/just-deleted, use getDeletedStateObject.
 func (s *StateDB) getStateObject(addr common.Address) *stateObject {
+	start := time.Now()
+	defer perfGetStateObjectTimer.UpdateSince(start)
 	if obj := s.getDeletedStateObject(addr); obj != nil && !obj.deleted {
 		return obj
 	}
@@ -822,6 +831,8 @@ func (s *StateDB) GetRefund() uint64 {
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
+	start := time.Now()
+	defer perfStateDBFinaliseTimer.UpdateSince(start)
 	addressesToPrefetch := make([][]byte, 0, len(s.journal.dirties))
 	for addr := range s.journal.dirties {
 		obj, exist := s.stateObjects[addr]
@@ -873,6 +884,8 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
+	start := time.Now()
+	defer perfIntermediateRootTimer.UpdateSince(start)
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 
@@ -1163,6 +1176,8 @@ func (s *StateDB) handleDestruction(nodes *trienode.MergedNodeSet) (map[common.A
 // The associated block number of the state transition is also provided
 // for more chain context.
 func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool) (common.Hash, error) {
+	start1 := time.Now()
+	defer perfStateDBCommitTimer.UpdateSince(start1)
 	// Short circuit in case any database failure occurred earlier.
 	if s.dbErr != nil {
 		return common.Hash{}, fmt.Errorf("commit aborted due to earlier error: %v", s.dbErr)
