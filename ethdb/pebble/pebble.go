@@ -325,7 +325,7 @@ func (d *Database) Put(key []byte, value []byte) error {
 	if d.closed {
 		return pebble.ErrClosed
 	}
-	return d.db.Set(key, value, d.writeOptions)
+	return d.db.Set(key, value, pebble.NoSync)
 }
 
 // Delete removes the key from the key-value store.
@@ -335,7 +335,7 @@ func (d *Database) Delete(key []byte) error {
 	if d.closed {
 		return pebble.ErrClosed
 	}
-	return d.db.Delete(key, nil)
+	return d.db.Delete(key, pebble.NoSync)
 }
 
 // NewBatch creates a write-only key-value store that buffers changes to its host
@@ -591,7 +591,7 @@ func (b *batch) Write() error {
 	if b.db.closed {
 		return pebble.ErrClosed
 	}
-	return b.b.Commit(b.db.writeOptions)
+	return b.b.Commit(pebble.NoSync)
 }
 
 // Reset resets the batch for reuse.

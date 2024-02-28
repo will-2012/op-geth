@@ -203,12 +203,12 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 func (db *Database) Put(key []byte, value []byte) error {
 	start := time.Now()
 	defer ethdb.PerfDBPutTimer.UpdateSince(start)
-	return db.db.Put(key, value, &opt.WriteOptions{Sync: true})
+	return db.db.Put(key, value, nil)
 }
 
 // Delete removes the key from the key-value store.
 func (db *Database) Delete(key []byte) error {
-	return db.db.Delete(key, &opt.WriteOptions{Sync: true})
+	return db.db.Delete(key, nil)
 }
 
 // NewBatch creates a write-only key-value store that buffers changes to its host
@@ -420,7 +420,7 @@ func (b *batch) ValueSize() int {
 func (b *batch) Write() error {
 	start := time.Now()
 	defer ethdb.PerfDBBatchWriteTimer.UpdateSince(start)
-	return b.db.Write(b.b, &opt.WriteOptions{Sync: true})
+	return b.db.Write(b.b, nil)
 }
 
 // Reset resets the batch for reuse.
