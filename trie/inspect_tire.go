@@ -196,6 +196,9 @@ func (inspect *Inspector) concurrentTraversal(theTrie *Trie, theTrieTreeStat *tr
 			fmt.Printf("New contract trie node: %v, error: %v, Height: %v, Path: %v\n", theNode, err, height, path)
 			break
 		}
+		if ownerAddress.String() != "0x4200000000000000000000000000000000000016" {
+			break
+		}
 		contractTrie.tracer.reset()
 		trieStat := &trieTreeStat{
 			isAccountTrie: false,
