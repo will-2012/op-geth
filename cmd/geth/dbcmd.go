@@ -19,6 +19,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -30,7 +31,6 @@ import (
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/console/prompt"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/internal/flags"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli/v2"
 )
@@ -49,7 +50,7 @@ var (
 		Name:      "removedb",
 		Usage:     "Remove blockchain and state databases",
 		ArgsUsage: "",
-		Flags:     utils.DatabasePathFlags,
+		Flags:     utils.DatabaseFlags,
 		Description: `
 Remove blockchain and state databases`,
 	}
@@ -59,11 +60,11 @@ Remove blockchain and state databases`,
 		ArgsUsage: "",
 		Subcommands: []*cli.Command{
 			dbInspectCmd,
+			dbInspectTrieCmd,
 			dbStatCmd,
 			dbCompactCmd,
 			dbGetCmd,
 			dbDeleteCmd,
-			dbInspectTrieCmd,
 			dbPutCmd,
 			dbGetSlotsCmd,
 			dbDumpFreezerIndex,
@@ -79,7 +80,7 @@ Remove blockchain and state databases`,
 		ArgsUsage: "<prefix> <start>",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Usage:       "Inspect the storage size for each type of data in the database",
 		Description: `This commands iterates the entire database. If the optional 'prefix' and 'start' arguments are provided, then the iteration is limited to the given subset of data.`,
 	}
@@ -89,16 +90,17 @@ Remove blockchain and state databases`,
 		ArgsUsage: "<blocknum> <jobnum>",
 		Flags: []cli.Flag{
 			utils.DataDirFlag,
-			utils.SyncModeFlag,
 		},
-		Usage:       "Inspect the MPT tree of the account and contract.",
-		Description: `This commands iterates the entrie WorldState.`,
+		Usage: "Print detailed trie information about the structure of account trie and storage tries.",
+		Description: `This commands iterates the entrie trie-backed state. If the 'blocknum' is not specified, 
+the latest block number will be used by default. 'jobnum' indicates the number of coroutines concurrently traversing
+the account and storage trie.`,
 	}
 	dbCheckStateContentCmd = &cli.Command{
 		Action:    checkStateContent,
 		Name:      "check-state-content",
 		ArgsUsage: "<start (optional)>",
-		Flags:     flags.Merge(utils.NetworkFlags, utils.DatabasePathFlags),
+		Flags:     flags.Merge(utils.NetworkFlags, utils.DatabaseFlags),
 		Usage:     "Verify that state data is cryptographically correct",
 		Description: `This command iterates the entire database for 32-byte keys, looking for rlp-encoded trie nodes.
 For each trie node encountered, it checks that the key corresponds to the keccak256(value). If this is not true, this indicates
@@ -110,7 +112,7 @@ a data corruption.`,
 		Usage:  "Print leveldb statistics",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 	}
 	dbCompactCmd = &cli.Command{
 		Action: dbCompact,
@@ -120,7 +122,7 @@ a data corruption.`,
 			utils.SyncModeFlag,
 			utils.CacheFlag,
 			utils.CacheDatabaseFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: `This command performs a database compaction. 
 WARNING: This operation may take a very long time to finish, and may cause database
 corruption if it is aborted during execution'!`,
@@ -132,7 +134,7 @@ corruption if it is aborted during execution'!`,
 		ArgsUsage: "<hex-encoded key>",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: "This command looks up the specified database key from the database.",
 	}
 	dbDeleteCmd = &cli.Command{
@@ -142,7 +144,7 @@ corruption if it is aborted during execution'!`,
 		ArgsUsage: "<hex-encoded key>",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: `This command deletes the specified database key from the database. 
 WARNING: This is a low-level operation which may cause database corruption!`,
 	}
@@ -153,7 +155,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		ArgsUsage: "<hex-encoded key> <hex-encoded value>",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: `This command sets a given database key to the given value. 
 WARNING: This is a low-level operation which may cause database corruption!`,
 	}
@@ -164,7 +166,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		ArgsUsage: "<hex-encoded state root> <hex-encoded account hash> <hex-encoded storage trie root> <hex-encoded start (optional)> <int max elements (optional)>",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: "This command looks up the specified database key from the database.",
 	}
 	dbDumpFreezerIndex = &cli.Command{
@@ -174,7 +176,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		ArgsUsage: "<freezer-type> <table-type> <start (int)> <end (int)>",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: "This command displays information about the freezer index.",
 	}
 	dbImportCmd = &cli.Command{
@@ -184,7 +186,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		ArgsUsage: "<dumpfile> <start (optional)",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: "The import command imports the specific chain data from an RLP encoded stream.",
 	}
 	dbExportCmd = &cli.Command{
@@ -194,7 +196,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		ArgsUsage: "<type> <dumpfile>",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: "Exports the specified chain data to an RLP encoded stream, optionally gzip-compressed.",
 	}
 	dbMetadataCmd = &cli.Command{
@@ -203,7 +205,7 @@ WARNING: This is a low-level operation which may cause database corruption!`,
 		Usage:  "Shows metadata about the chain status.",
 		Flags: flags.Merge([]cli.Flag{
 			utils.SyncModeFlag,
-		}, utils.NetworkFlags, utils.DatabasePathFlags),
+		}, utils.NetworkFlags, utils.DatabaseFlags),
 		Description: "Shows metadata about the chain status.",
 	}
 )
@@ -266,82 +268,6 @@ func confirmAndRemoveDB(database string, kind string) {
 		})
 		log.Info("Database successfully deleted", "path", database, "elapsed", common.PrettyDuration(time.Since(start)))
 	}
-}
-
-func inspectTrie(ctx *cli.Context) error {
-	if ctx.NArg() < 1 {
-		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
-	}
-
-	if ctx.NArg() > 3 {
-		return fmt.Errorf("Max 3 arguments: %v", ctx.Command.ArgsUsage)
-	}
-
-	var (
-		blockNumber  uint64
-		trieRootHash common.Hash
-		jobnum       uint64
-	)
-
-	stack, _ := makeConfigNode(ctx)
-	defer stack.Close()
-
-	db := utils.MakeChainDatabase(ctx, stack, true)
-	defer db.Close()
-
-	var headerBlockHash common.Hash
-	if ctx.NArg() >= 1 {
-		if ctx.Args().Get(0) == "latest" {
-			headerHash := rawdb.ReadHeadHeaderHash(db)
-			blockNumber = *(rawdb.ReadHeaderNumber(db, headerHash))
-		} else if ctx.Args().Get(0) == "snapshot" {
-			trieRootHash = rawdb.ReadSnapshotRoot(db)
-			blockNumber = math.MaxUint64
-		} else {
-			var err error
-			blockNumber, err = strconv.ParseUint(ctx.Args().Get(0), 10, 64)
-			if err != nil {
-				return fmt.Errorf("failed to Parse blocknum, Args[0]: %v, err: %v", ctx.Args().Get(0), err)
-			}
-		}
-
-		if ctx.NArg() == 1 {
-			jobnum = 1000
-		} else {
-			var err error
-			jobnum, err = strconv.ParseUint(ctx.Args().Get(1), 10, 64)
-			if err != nil {
-				return fmt.Errorf("failed to Parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
-			}
-		}
-
-		if blockNumber != math.MaxUint64 {
-			headerBlockHash = rawdb.ReadCanonicalHash(db, blockNumber)
-			if headerBlockHash == (common.Hash{}) {
-				return fmt.Errorf("ReadHeadBlockHash empty hash")
-			}
-			blockHeader := rawdb.ReadHeader(db, headerBlockHash, blockNumber)
-			trieRootHash = blockHeader.Root
-		}
-		if (trieRootHash == common.Hash{}) {
-			log.Error("Empty root hash")
-		}
-		fmt.Printf("ReadBlockHeader, root: %v, blocknum: %v\n", trieRootHash, blockNumber)
-
-		triedb := trie.NewDatabase(db)
-		theTrie, err := trie.New(trie.TrieID(trieRootHash), triedb)
-		if err != nil {
-			fmt.Printf("fail to new trie tree, err: %v, rootHash: %v\n", err, trieRootHash.String())
-			return err
-		}
-		theInspect, err := trie.NewInspector(theTrie, triedb, trieRootHash, blockNumber, jobnum)
-		if err != nil {
-			return err
-		}
-		theInspect.Run()
-		theInspect.DisplayResult()
-	}
-	return nil
 }
 
 func inspect(ctx *cli.Context) error {
@@ -571,6 +497,9 @@ func dbDumpTrie(ctx *cli.Context) error {
 	db := utils.MakeChainDatabase(ctx, stack, true)
 	defer db.Close()
 
+	triedb := utils.MakeTrieDatabase(ctx, db, false, true)
+	defer triedb.Close()
+
 	var (
 		state   []byte
 		storage []byte
@@ -604,12 +533,16 @@ func dbDumpTrie(ctx *cli.Context) error {
 		}
 	}
 	id := trie.StorageTrieID(common.BytesToHash(state), common.BytesToHash(account), common.BytesToHash(storage))
-	theTrie, err := trie.New(id, trie.NewDatabase(db))
+	theTrie, err := trie.New(id, triedb)
+	if err != nil {
+		return err
+	}
+	trieIt, err := theTrie.NodeIterator(start)
 	if err != nil {
 		return err
 	}
 	var count int64
-	it := trie.NewIterator(theTrie.NodeIterator(start))
+	it := trie.NewIterator(trieIt)
 	for it.Next() {
 		if max > 0 && count == max {
 			fmt.Printf("Exiting after %d values\n", count)
@@ -676,6 +609,7 @@ func importLDBdata(ctx *cli.Context) error {
 		close(stop)
 	}()
 	db := utils.MakeChainDatabase(ctx, stack, false)
+	defer db.Close()
 	return utils.ImportLDBData(db, fName, int64(start), stop)
 }
 
@@ -772,6 +706,7 @@ func exportChaindata(ctx *cli.Context) error {
 		close(stop)
 	}()
 	db := utils.MakeChainDatabase(ctx, stack, true)
+	defer db.Close()
 	return utils.ExportChaindata(ctx.Args().Get(1), kind, exporter(db), stop)
 }
 
@@ -779,6 +714,8 @@ func showMetaData(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 	db := utils.MakeChainDatabase(ctx, stack, true)
+	defer db.Close()
+
 	ancients, err := db.Ancients()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error accessing ancients: %v", err)
@@ -800,5 +737,89 @@ func showMetaData(ctx *cli.Context) error {
 	table.SetHeader([]string{"Field", "Value"})
 	table.AppendBulk(data)
 	table.Render()
+	return nil
+}
+
+func inspectTrie(ctx *cli.Context) error {
+	if ctx.NArg() < 1 {
+		return fmt.Errorf("required arguments: %v", ctx.Command.ArgsUsage)
+	}
+
+	if ctx.NArg() > 2 {
+		return fmt.Errorf("excessive number of arguments: %v", ctx.Command.ArgsUsage)
+	}
+
+	var (
+		blockNumber  uint64
+		trieRootHash common.Hash
+		jobnum       uint64
+	)
+
+	stack, _ := makeConfigNode(ctx)
+	defer stack.Close()
+
+	db := utils.MakeChainDatabase(ctx, stack, false)
+	defer db.Close()
+
+	var headerBlockHash common.Hash
+	if ctx.Args().Get(0) == "latest" {
+		headerHash := rawdb.ReadHeadHeaderHash(db)
+		blockNumber = *(rawdb.ReadHeaderNumber(db, headerHash))
+	} else if ctx.Args().Get(0) == "snapshot" {
+		trieRootHash = rawdb.ReadSnapshotRoot(db)
+		blockNumber = math.MaxUint64
+	} else {
+		var err error
+		blockNumber, err = strconv.ParseUint(ctx.Args().Get(0), 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to parse blocknum, Args[0]: %v, err: %v", ctx.Args().Get(0), err)
+		}
+	}
+
+	if ctx.NArg() == 1 {
+		jobnum = 1000
+	} else {
+		var err error
+		jobnum, err = strconv.ParseUint(ctx.Args().Get(1), 10, 64)
+		if err != nil {
+			return fmt.Errorf("failed to Parse jobnum, Args[1]: %v, err: %v", ctx.Args().Get(1), err)
+		}
+	}
+
+	if blockNumber != math.MaxUint64 {
+		headerBlockHash = rawdb.ReadCanonicalHash(db, blockNumber)
+		if headerBlockHash == (common.Hash{}) {
+			return fmt.Errorf("canonical hash for block %d not found", blockNumber)
+		}
+		blockHeader := rawdb.ReadHeader(db, headerBlockHash, blockNumber)
+		trieRootHash = blockHeader.Root
+	}
+	if (trieRootHash == common.Hash{}) {
+		log.Error("Empty root hash")
+	}
+	fmt.Printf("ReadBlockHeader, root: %v, blocknum: %v\n", trieRootHash, blockNumber)
+
+	dbScheme := rawdb.ReadStateScheme(db)
+	var config *trie.Config
+	if dbScheme == rawdb.PathScheme {
+		config = &trie.Config{
+			PathDB: pathdb.ReadOnly,
+		}
+	} else if dbScheme == rawdb.HashScheme {
+		config = trie.HashDefaults
+	}
+
+	triedb := trie.NewDatabase(db, config)
+	theTrie, err := trie.New(trie.TrieID(trieRootHash), triedb)
+	if err != nil {
+		fmt.Printf("fail to new trie tree, err: %v, rootHash: %v\n", err, trieRootHash.String())
+		return err
+	}
+	theInspect, err := trie.NewInspector(theTrie, triedb, trieRootHash, blockNumber, jobnum)
+	if err != nil {
+		return err
+	}
+	theInspect.Run()
+	theInspect.DisplayResult()
 	return nil
 }
