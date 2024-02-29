@@ -670,3 +670,16 @@ func (t *Trie) Reset() {
 	t.tracer.reset()
 	t.committed = false
 }
+
+// resolveWithoutTrack loads node from the underlying store with the given node hash
+// and path prefix.
+func (t *Trie) resolveWithoutTrack(n node, prefix []byte) (node, error) {
+	if n, ok := n.(hashNode); ok {
+		blob, err := t.reader.node(prefix, common.BytesToHash(n))
+		if err != nil {
+			return nil, err
+		}
+		return mustDecodeNode(n, blob), nil
+	}
+	return n, nil
+}
