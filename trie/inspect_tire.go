@@ -196,9 +196,6 @@ func (inspect *Inspector) concurrentTraversal(theTrie *Trie, theTrieTreeStat *tr
 			fmt.Printf("New contract trie node: %v, error: %v, Height: %v, Path: %v\n", theNode, err, height, path)
 			break
 		}
-		if ownerAddress.String() != "0x4200000000000000000000000000000000000016" {
-			break
-		}
 		contractTrie.tracer.reset()
 		trieStat := &trieTreeStat{
 			isAccountTrie: false,
@@ -254,11 +251,7 @@ func (inspect *Inspector) DisplayResult() {
 		return sortedTriesByNums[i].totalNum > sortedTriesByNums[j].totalNum
 	})
 	fmt.Println("EOA accounts num: ", inspect.eoaAccountNums)
-	// only display top 5
-	for i, t := range sortedTriesByNums {
-		if i > 5 {
-			break
-		}
+	for _, t := range sortedTriesByNums {
 		if stat, ok := inspect.result[t.ownerAddress]; !ok {
 			log.Error("Storage trie stat not found", "ownerAddress", t.ownerAddress)
 		} else {

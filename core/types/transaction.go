@@ -54,6 +54,7 @@ type Transaction struct {
 	time  time.Time // Time first seen locally (spam avoidance)
 
 	// caches
+	// prefetcher??
 	hash atomic.Value
 	size atomic.Value
 	from atomic.Value
