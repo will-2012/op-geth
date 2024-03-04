@@ -21,10 +21,18 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
+)
+
+var (
+	perfTrieGetTimer         = metrics.NewRegisteredTimer("perf/trie/get/time", nil)
+	perfTrieReaderGetTimer   = metrics.NewRegisteredTimer("perf/trie/reader/get/time", nil)
+	perfTrieReaderTotalTimer = metrics.NewRegisteredTimer("perf/trie/reader/total/time", nil)
 )
 
 // Trie is a Merkle Patricia Trie. Use New to create a trie that sits on
@@ -119,6 +127,8 @@ func (t *Trie) Get(key []byte) []byte {
 // The value bytes must not be modified by the caller.
 // If a node was not found in the database, a MissingNodeError is returned.
 func (t *Trie) TryGet(key []byte) ([]byte, error) {
+	start := time.Now()
+	defer perfTrieGetTimer.UpdateSince(start)
 	value, newroot, didResolve, err := t.tryGet(t.root, keybytesToHex(key), 0)
 	if err == nil && didResolve {
 		t.root = newroot
@@ -151,7 +161,9 @@ func (t *Trie) tryGet(origNode node, key []byte, pos int) (value []byte, newnode
 		}
 		return value, n, didResolve, err
 	case hashNode:
+		start := time.Now()
 		child, err := t.resolveAndTrack(n, key[:pos])
+		perfTrieReaderGetTimer.UpdateSince(start)
 		if err != nil {
 			return nil, n, true, err
 		}
@@ -165,6 +177,8 @@ func (t *Trie) tryGet(origNode node, key []byte, pos int) (value []byte, newnode
 // TryGetNode attempts to retrieve a trie node by compact-encoded path. It is not
 // possible to use keybyte-encoding as the path might contain odd nibbles.
 func (t *Trie) TryGetNode(path []byte) ([]byte, int, error) {
+	start := time.Now()
+	defer perfTrieGetTimer.UpdateSince(start)
 	item, newroot, resolved, err := t.tryGetNode(t.root, compactToHex(path), 0)
 	if err != nil {
 		return nil, resolved, err
@@ -227,7 +241,9 @@ func (t *Trie) tryGetNode(origNode node, path []byte, pos int) (item []byte, new
 		return item, n, resolved, err
 
 	case hashNode:
+		start := time.Now()
 		child, err := t.resolveAndTrack(n, path[:pos])
+		perfTrieReaderGetTimer.UpdateSince(start)
 		if err != nil {
 			return nil, n, 1, err
 		}
@@ -536,6 +552,8 @@ func (t *Trie) resolve(n node, prefix []byte) (node, error) {
 // node's original value. The rlp-encoded blob is preferred to be loaded from
 // database because it's easy to decode node while complex to encode node to blob.
 func (t *Trie) resolveAndTrack(n hashNode, prefix []byte) (node, error) {
+	start := time.Now()
+	defer perfTrieReaderTotalTimer.UpdateSince(start)
 	blob, err := t.reader.nodeBlob(prefix, common.BytesToHash(n))
 	if err != nil {
 		return nil, err
