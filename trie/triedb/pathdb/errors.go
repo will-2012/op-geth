@@ -63,6 +63,12 @@ var (
 
 	// errRevertImmutable is returned if revert the background immutable nodecache
 	errRevertImmutable = errors.New("revert immutable nodecache")
+
+	// errAllowedBackgroundFlushing is returned if enable flushing disk when get withdrawal proof reader
+	errAllowedBackgroundFlushing = errors.New("not stop background flushing disk")
+
+	// errNoWithdrawalProofDifflayer is returned if difflayers is not enough.
+	errNoWithdrawalProofDifflayer = errors.New("no withdrawal proof difflayer")
 )
 
 func newUnexpectedNodeError(loc string, expHash common.Hash, gotHash common.Hash, owner common.Hash, path []byte, blob []byte) error {
