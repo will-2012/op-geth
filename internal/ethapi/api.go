@@ -724,6 +724,8 @@ func (s *BlockChainAPI) GetProof(ctx context.Context, address common.Address, st
 	if statedb == nil || err != nil {
 		return nil, err
 	}
+	_ = statedb.Database().TrieDB().DisableBackgroundFlush()
+	defer statedb.Database().TrieDB().EnableBackgroundFlush()
 	codeHash := statedb.GetCodeHash(address)
 	storageRoot := statedb.GetStorageRoot(address)
 

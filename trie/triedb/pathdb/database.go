@@ -209,9 +209,29 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 func (db *Database) Reader(root common.Hash) (layer, error) {
 	l := db.tree.get(root)
 	if l == nil {
+		r, err := db.tree.bottom().buffer.withdrawalProofReader(root)
+		if err == nil && r != nil {
+			return r, nil
+		}
 		return nil, fmt.Errorf("state %#x is not available", root)
 	}
 	return l, nil
+}
+
+func (db *Database) DisableBackgroundFlush() error {
+	switch b := db.tree.bottom().buffer.(type) {
+	case *nodebufferlist:
+		b.disableFlushing()
+	}
+	return nil
+}
+
+func (db *Database) EnableBackgroundFlush() error {
+	switch b := db.tree.bottom().buffer.(type) {
+	case *nodebufferlist:
+		b.enableFlushing()
+	}
+	return nil
 }
 
 // Update adds a new layer into the tree, if that can be linked to an existing
@@ -318,7 +338,10 @@ func (db *Database) Enable(root common.Hash) error {
 	}
 	// Re-construct a new disk layer backed by persistent state
 	// with **empty clean cache and node buffer**.
-	db.tree.reset(newDiskLayer(root, 0, db, nil, NewTrieNodeBuffer(db.config.SyncFlush, db.bufferSize, nil, 0)))
+	nb := NewTrieNodeBuffer(db.diskdb, db.config.SyncFlush, db.bufferSize, nil, 0)
+	dl := newDiskLayer(root, 0, db, nil, nb)
+	nb.setClean(dl.cleans)
+	db.tree.reset(dl)
 
 	// Re-enable the database as the final step.
 	db.waitSync = false

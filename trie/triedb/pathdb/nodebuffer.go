@@ -17,6 +17,7 @@
 package pathdb
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -82,7 +83,7 @@ func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*tr
 // the ownership of the nodes map which belongs to the bottom-most diff layer.
 // It will just hold the node references from the given map which are safe to
 // copy.
-func (b *nodebuffer) commit(nodes map[common.Hash]map[string]*trienode.Node) trienodebuffer {
+func (b *nodebuffer) commit(root common.Hash, id uint64, block uint64, nodes map[common.Hash]map[string]*trienode.Node) trienodebuffer {
 	var (
 		delta         int64
 		overwrite     int64
@@ -291,4 +292,16 @@ func (b *nodebuffer) getLayers() uint64 {
 	return b.layers
 }
 
+// waitAndStopFlushing will block unit writing the trie nodes of trienodebuffer to disk.
 func (b *nodebuffer) waitAndStopFlushing() {}
+
+// setClean set fastcache to trienodebuffer for cache the trie nodes,
+// used for nodebufferlist.
+func (b *nodebuffer) setClean(clean *fastcache.Cache) {
+	return
+}
+
+// withdrawalProofReader return the world state Reader of withdrawal block.
+func (a *nodebuffer) withdrawalProofReader(blockRoot common.Hash) (layer, error) {
+	return nil, errors.New("node buffer not support")
+}
