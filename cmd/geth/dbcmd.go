@@ -809,8 +809,13 @@ func inspectTrie(ctx *cli.Context) error {
 		config = trie.HashDefaults
 	}
 
+	// block=18988076
+	root := "0x302e77e2e38c0d3a3a0a8f234873786d862a2fc9585b8f6c64c9f7ec4fdc8163"
+	contractAddr := "0x4200000000000000000000000000000000000016"
+	id := trie.StorageTrieID(common.HexToHash(root), common.HexToHash(contractAddr), common.HexToHash(root))
+
 	triedb := trie.NewDatabase(db, config)
-	theTrie, err := trie.New(trie.TrieID(trieRootHash), triedb)
+	theTrie, err := trie.New(id, triedb)
 	if err != nil {
 		fmt.Printf("fail to new trie tree, err: %v, rootHash: %v\n", err, trieRootHash.String())
 		return err
