@@ -177,7 +177,7 @@ func (inspect *Inspector) concurrentTraversal(theTrie *Trie, theTrieTreeStat *tr
 		inspect.concurrentTraversal(theTrie, theTrieTreeStat, n, height, path)
 		return
 	case valueNode:
-		if !hasTerm(path) {
+		if hasTerm(path) {
 			break
 		}
 		var account types.StateAccount
