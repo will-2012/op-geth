@@ -299,6 +299,8 @@ func (d *Database) Has(key []byte) (bool, error) {
 
 // Get retrieves the given key if it's present in the key-value store.
 func (d *Database) Get(key []byte) ([]byte, error) {
+	start := time.Now()
+	defer ethdb.PerfDBGetTimer.UpdateSince(start)
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
 	if d.closed {
@@ -316,12 +318,14 @@ func (d *Database) Get(key []byte) ([]byte, error) {
 
 // Put inserts the given value into the key-value store.
 func (d *Database) Put(key []byte, value []byte) error {
+	start := time.Now()
+	defer ethdb.PerfDBPutTimer.UpdateSince(start)
 	d.quitLock.RLock()
 	defer d.quitLock.RUnlock()
 	if d.closed {
 		return pebble.ErrClosed
 	}
-	return d.db.Set(key, value, d.writeOptions)
+	return d.db.Set(key, value, pebble.NoSync)
 }
 
 // Delete removes the key from the key-value store.
@@ -331,7 +335,7 @@ func (d *Database) Delete(key []byte) error {
 	if d.closed {
 		return pebble.ErrClosed
 	}
-	return d.db.Delete(key, nil)
+	return d.db.Delete(key, pebble.NoSync)
 }
 
 // NewBatch creates a write-only key-value store that buffers changes to its host
@@ -580,12 +584,14 @@ func (b *batch) ValueSize() int {
 
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
+	start := time.Now()
+	defer ethdb.PerfDBBatchWriteTimer.UpdateSince(start)
 	b.db.quitLock.RLock()
 	defer b.db.quitLock.RUnlock()
 	if b.db.closed {
 		return pebble.ErrClosed
 	}
-	return b.b.Commit(b.db.writeOptions)
+	return b.b.Commit(pebble.NoSync)
 }
 
 // Reset resets the batch for reuse.

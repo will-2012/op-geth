@@ -94,6 +94,12 @@ var (
 	errChainStopped         = errors.New("blockchain is stopped")
 	errInvalidOldChain      = errors.New("invalid old chain")
 	errInvalidNewChain      = errors.New("invalid new chain")
+
+	// perf writeBlockWithState
+	perfCommitPhase1Timer = metrics.NewRegisteredTimer("perf/commit/phase1/time", nil)
+	perfCommitPhase2Timer = metrics.NewRegisteredTimer("perf/commit/phase2/time", nil)
+	perfCommitPhase3Timer = metrics.NewRegisteredTimer("perf/commit/phase3/time", nil)
+	perfCommitPhase4Timer = metrics.NewRegisteredTimer("perf/commit/phase4/time", nil)
 )
 
 const (
@@ -146,6 +152,7 @@ type CacheConfig struct {
 	Preimages           bool          // Whether to store preimage of trie key to the disk
 	StateHistory        uint64        // Number of blocks from head whose state histories are reserved.
 	StateScheme         string        // Scheme used to store ethereum states and merkle tree nodes on top
+	PathSyncFlush       bool          // Whether sync flush the trienodebuffer of pathdb to disk.
 
 	SnapshotNoBuild bool // Whether the background generation is allowed
 	SnapshotWait    bool // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
@@ -163,6 +170,7 @@ func (c *CacheConfig) triedbConfig() *trie.Config {
 	}
 	if c.StateScheme == rawdb.PathScheme {
 		config.PathDB = &pathdb.Config{
+			SyncFlush:      c.PathSyncFlush,
 			StateHistory:   c.StateHistory,
 			CleanCacheSize: c.TrieCleanLimit * 1024 * 1024,
 			DirtyCacheSize: c.TrieDirtyLimit * 1024 * 1024,
@@ -371,6 +379,12 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 			var diskRoot common.Hash
 			if bc.cacheConfig.SnapshotLimit > 0 {
 				diskRoot = rawdb.ReadSnapshotRoot(bc.db)
+			}
+			if bc.triedb.Scheme() == rawdb.PathScheme {
+				recoverable, _ := bc.triedb.Recoverable(diskRoot)
+				if !bc.HasState(diskRoot) && !recoverable {
+					diskRoot = bc.triedb.Head()
+				}
 			}
 			if diskRoot != (common.Hash{}) {
 				log.Warn("Head state missing, repairing", "number", head.Number, "hash", head.Hash(), "snaproot", diskRoot)
@@ -1042,7 +1056,7 @@ func (bc *BlockChain) Stop() {
 			for !bc.triegc.Empty() {
 				triedb.Dereference(bc.triegc.PopItem())
 			}
-			if _, nodes, _ := triedb.Size(); nodes != 0 { // all memory is contained within the nodes return for hashdb
+			if _, nodes, _, _ := triedb.Size(); nodes != 0 { // all memory is contained within the nodes return for hashdb
 				log.Error("Dangling trie nodes after full cleanup")
 			}
 		}
@@ -1420,6 +1434,7 @@ func (bc *BlockChain) writeKnownBlock(block *types.Block) error {
 // writeBlockWithState writes block, metadata and corresponding state data to the
 // database.
 func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
+	startPhase1 := time.Now()
 	// Calculate the total difficulty of the block
 	ptd := bc.GetTd(block.ParentHash(), block.NumberU64()-1)
 	if ptd == nil {
@@ -1440,11 +1455,15 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
+	perfCommitPhase1Timer.UpdateSince(startPhase1)
+
+	startPhase2 := time.Now()
 	// Commit all cached state changes into underlying memory database.
 	root, err := state.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()))
 	if err != nil {
 		return err
 	}
+	perfCommitPhase2Timer.UpdateSince(startPhase2)
 	// If node is running in path mode, skip explicit gc operation
 	// which is unnecessary in this mode.
 	if bc.triedb.Scheme() == rawdb.PathScheme {
@@ -1452,8 +1471,13 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 	// If we're running an archive node, always flush
 	if bc.cacheConfig.TrieDirtyDisabled {
-		return bc.triedb.Commit(root, false)
+		startPhase3 := time.Now()
+		err = bc.triedb.Commit(root, false)
+		perfCommitPhase3Timer.UpdateSince(startPhase3)
+		return err
 	}
+	startPhase4 := time.Now()
+	defer perfCommitPhase4Timer.UpdateSince(startPhase4)
 	// Full but not archive node, do proper garbage collection
 	bc.triedb.Reference(root, common.Hash{}) // metadata reference to keep trie alive
 	bc.triegc.Push(root, -int64(block.NumberU64()))
@@ -1465,8 +1489,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 	// If we exceeded our memory allowance, flush matured singleton nodes to disk
 	var (
-		_, nodes, imgs = bc.triedb.Size() // all memory is contained within the nodes return for hashdb
-		limit          = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
+		_, nodes, _, imgs = bc.triedb.Size() // all memory is contained within the nodes return for hashdb
+		limit             = common.StorageSize(bc.cacheConfig.TrieDirtyLimit) * 1024 * 1024
 	)
 	if nodes > limit || imgs > 4*1024*1024 {
 		bc.triedb.Cap(limit - ethdb.IdealBatchSize)
@@ -1874,20 +1898,16 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		proctime := time.Since(start) // processing + validation
 
 		// Update the metrics touched during block processing and validation
-		accountReadTimer.Update(statedb.AccountReads)                   // Account reads are complete(in processing)
-		storageReadTimer.Update(statedb.StorageReads)                   // Storage reads are complete(in processing)
-		snapshotAccountReadTimer.Update(statedb.SnapshotAccountReads)   // Account reads are complete(in processing)
-		snapshotStorageReadTimer.Update(statedb.SnapshotStorageReads)   // Storage reads are complete(in processing)
-		accountUpdateTimer.Update(statedb.AccountUpdates)               // Account updates are complete(in validation)
-		storageUpdateTimer.Update(statedb.StorageUpdates)               // Storage updates are complete(in validation)
-		accountHashTimer.Update(statedb.AccountHashes)                  // Account hashes are complete(in validation)
-		storageHashTimer.Update(statedb.StorageHashes)                  // Storage hashes are complete(in validation)
-		triehash := statedb.AccountHashes + statedb.StorageHashes       // The time spent on tries hashing
-		trieUpdate := statedb.AccountUpdates + statedb.StorageUpdates   // The time spent on tries update
-		trieRead := statedb.SnapshotAccountReads + statedb.AccountReads // The time spent on account read
-		trieRead += statedb.SnapshotStorageReads + statedb.StorageReads // The time spent on storage read
-		blockExecutionTimer.Update(ptime - trieRead)                    // The time spent on EVM processing
-		blockValidationTimer.Update(vtime - (triehash + trieUpdate))    // The time spent on block validation
+		accountReadTimer.Update(statedb.AccountReads)                 // Account reads are complete(in processing)
+		storageReadTimer.Update(statedb.StorageReads)                 // Storage reads are complete(in processing)
+		snapshotAccountReadTimer.Update(statedb.SnapshotAccountReads) // Account reads are complete(in processing)
+		snapshotStorageReadTimer.Update(statedb.SnapshotStorageReads) // Storage reads are complete(in processing)
+		accountUpdateTimer.Update(statedb.AccountUpdates)             // Account updates are complete(in validation)
+		storageUpdateTimer.Update(statedb.StorageUpdates)             // Storage updates are complete(in validation)
+		accountHashTimer.Update(statedb.AccountHashes)                // Account hashes are complete(in validation)
+		storageHashTimer.Update(statedb.StorageHashes)                // Storage hashes are complete(in validation)
+		blockExecutionTimer.Update(ptime)                             // The time spent on EVM processing
+		blockValidationTimer.Update(vtime)                            // The time spent on block validation
 
 		// Write the block to the chain and get the status.
 		var (
@@ -1910,7 +1930,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		snapshotCommitTimer.Update(statedb.SnapshotCommits) // Snapshot commits are complete, we can mark them
 		triedbCommitTimer.Update(statedb.TrieDBCommits)     // Trie database commits are complete, we can mark them
 
-		blockWriteTimer.Update(time.Since(wstart) - statedb.AccountCommits - statedb.StorageCommits - statedb.SnapshotCommits - statedb.TrieDBCommits)
+		blockWriteTimer.Update(time.Since(wstart))
 		blockInsertTimer.UpdateSince(start)
 
 		// Report the import stats before returning the various results
@@ -1921,8 +1941,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		if bc.snaps != nil {
 			snapDiffItems, snapBufItems = bc.snaps.Size()
 		}
-		trieDiffNodes, trieBufNodes, _ := bc.triedb.Size()
-		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, setHead)
+		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
+		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, setHead)
 
 		if !setHead {
 			// After merge we expect few side chains. Simply count

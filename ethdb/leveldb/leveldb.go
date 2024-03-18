@@ -190,6 +190,8 @@ func (db *Database) Has(key []byte) (bool, error) {
 
 // Get retrieves the given key if it's present in the key-value store.
 func (db *Database) Get(key []byte) ([]byte, error) {
+	start := time.Now()
+	defer ethdb.PerfDBGetTimer.UpdateSince(start)
 	dat, err := db.db.Get(key, nil)
 	if err != nil {
 		return nil, err
@@ -199,6 +201,8 @@ func (db *Database) Get(key []byte) ([]byte, error) {
 
 // Put inserts the given value into the key-value store.
 func (db *Database) Put(key []byte, value []byte) error {
+	start := time.Now()
+	defer ethdb.PerfDBPutTimer.UpdateSince(start)
 	return db.db.Put(key, value, nil)
 }
 
@@ -414,6 +418,8 @@ func (b *batch) ValueSize() int {
 
 // Write flushes any accumulated data to disk.
 func (b *batch) Write() error {
+	start := time.Now()
+	defer ethdb.PerfDBBatchWriteTimer.UpdateSince(start)
 	return b.db.Write(b.b, nil)
 }
 
