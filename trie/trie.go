@@ -82,6 +82,7 @@ func (t *Trie) Copy() *Trie {
 func New(id *ID, db *Database) (*Trie, error) {
 	reader, err := newTrieReader(id.StateRoot, id.Owner, db)
 	if err != nil {
+		log.Warn("failed to new trie reader", "id", id, "error", err)
 		return nil, err
 	}
 	trie := &Trie{

@@ -52,6 +52,20 @@ const (
 	// Do not increase the buffer size arbitrarily, otherwise the system
 	// pause time will increase when the database writes happen.
 	DefaultBufferSize = 64 * 1024 * 1024
+
+	// DefaultBackgroundFlushInterval defines the default the wait interval
+	// that background node cache flush disk.
+	DefaultBackgroundFlushInterval = 3
+
+	// DefaultBatchRedundancyRate defines the batch size, compatible write
+	// size calculation is inaccurate
+	DefaultBatchRedundancyRate = 1.1
+
+	// MaxDirtyBufferSize is the maximum memory allowance of node buffer.
+	// Too large nodebuffer will cause the system to pause for a long
+	// time when write happens. Also, the largest batch that pebble can
+	// support is 4GB, node will panic if batch size exceeds this limit.
+	MaxDirtyBufferSize = 256 * 1024 * 1024
 )
 
 // layer is the interface implemented by all state layers which includes some
@@ -86,6 +100,7 @@ type layer interface {
 
 // Config contains the settings for database.
 type Config struct {
+	SyncFlush      bool   // Flag of trienodebuffer sync flush cache to disk
 	StateHistory   uint64 // Number of recent blocks to maintain state history for
 	CleanCacheSize int    // Maximum memory allowance (in bytes) for caching clean nodes
 	DirtyCacheSize int    // Maximum memory allowance (in bytes) for caching dirty nodes
@@ -146,7 +161,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 		config = Defaults
 	}
 	config = config.sanitize()
-
+	// config.CleanCacheSize = MaxDirtyBufferSize * 4 * 4 //  4GB??
 	db := &Database{
 		readOnly:   config.ReadOnly,
 		bufferSize: config.DirtyCacheSize,
@@ -186,7 +201,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 			log.Crit("Failed to disable database", "err", err) // impossible to happen
 		}
 	}
-	log.Warn("Path-based state scheme is an experimental feature")
+	log.Warn("Path-based state scheme is an experimental feature", "sync", db.config.SyncFlush)
 	return db
 }
 
@@ -194,9 +209,30 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 func (db *Database) Reader(root common.Hash) (layer, error) {
 	l := db.tree.get(root)
 	if l == nil {
+		db.DisableBackgroundFlush()
+		r, err := db.tree.bottom().buffer.withdrawalProofReader(root)
+		if err == nil && r != nil {
+			return r, nil
+		}
 		return nil, fmt.Errorf("state %#x is not available", root)
 	}
 	return l, nil
+}
+
+func (db *Database) DisableBackgroundFlush() error {
+	switch b := db.tree.bottom().buffer.(type) {
+	case *nodebufferlist:
+		b.disableFlushing()
+	}
+	return nil
+}
+
+func (db *Database) EnableBackgroundFlush() error {
+	switch b := db.tree.bottom().buffer.(type) {
+	case *nodebufferlist:
+		b.enableFlushing()
+	}
+	return nil
 }
 
 // Update adds a new layer into the tree, if that can be linked to an existing
@@ -303,7 +339,10 @@ func (db *Database) Enable(root common.Hash) error {
 	}
 	// Re-construct a new disk layer backed by persistent state
 	// with **empty clean cache and node buffer**.
-	db.tree.reset(newDiskLayer(root, 0, db, nil, newNodeBuffer(db.bufferSize, nil, 0)))
+	nb := NewTrieNodeBuffer(db.diskdb, db.config.SyncFlush, db.bufferSize, nil, 0)
+	dl := newDiskLayer(root, 0, db, nil, nb)
+	nb.setClean(dl.cleans)
+	db.tree.reset(dl)
 
 	// Re-enable the database as the final step.
 	db.waitSync = false
@@ -410,16 +449,16 @@ func (db *Database) Close() error {
 
 // Size returns the current storage size of the memory cache in front of the
 // persistent database layer.
-func (db *Database) Size() (diffs common.StorageSize, nodes common.StorageSize) {
+func (db *Database) Size() (diffs common.StorageSize, nodes common.StorageSize, immutableNodes common.StorageSize) {
 	db.tree.forEach(func(layer layer) {
 		if diff, ok := layer.(*diffLayer); ok {
 			diffs += common.StorageSize(diff.memory)
 		}
 		if disk, ok := layer.(*diskLayer); ok {
-			nodes += disk.size()
+			nodes, immutableNodes = disk.size()
 		}
 	})
-	return diffs, nodes
+	return diffs, nodes, immutableNodes
 }
 
 // Initialized returns an indicator if the state data is already
@@ -450,6 +489,13 @@ func (db *Database) SetBufferSize(size int) error {
 // Scheme returns the node scheme used in the database.
 func (db *Database) Scheme() string {
 	return rawdb.PathScheme
+}
+
+// Head return the top non-fork difflayer/disklayer root hash for rewinding.
+func (db *Database) Head() common.Hash {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	return db.tree.front()
 }
 
 // modifyAllowed returns the indicator if mutation is allowed. This function

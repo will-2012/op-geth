@@ -695,6 +695,7 @@ func (s *BlockChainAPI) GetProof(ctx context.Context, address common.Address, st
 	if err != nil {
 		return nil, err
 	}
+	log.Info("get proof", "address", address.String(), "storage_keys", storageKeys, "header_number", header.Number, "header_root", header.Root.String())
 	if s.b.ChainConfig().IsOptimismPreBedrock(header.Number) {
 		if s.b.HistoricalRPCService() != nil {
 			var res AccountResult
@@ -722,8 +723,11 @@ func (s *BlockChainAPI) GetProof(ctx context.Context, address common.Address, st
 	}
 	statedb, header, err := s.b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
 	if statedb == nil || err != nil {
+		log.Warn("failed to get state db", "error", err)
 		return nil, err
 	}
+	// _ = statedb.Database().TrieDB().DisableBackgroundFlush()
+	defer statedb.Database().TrieDB().EnableBackgroundFlush()
 	codeHash := statedb.GetCodeHash(address)
 	storageRoot := statedb.GetStorageRoot(address)
 
