@@ -1813,6 +1813,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			lastCanon = block
 			continue
 		}
+		time.Sleep(1 * time.Second)
 
 		var (
 			receipts, receiptExist = bc.miningReceiptsCache.Get(block.Hash())

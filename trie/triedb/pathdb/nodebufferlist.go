@@ -528,7 +528,7 @@ func (nf *nodebufferlist) enableFlushing() {
 func (nf *nodebufferlist) withdrawalProofReader(blockRoot common.Hash) (layer, error) {
 	if !nf.stopFlushing.Load() {
 		withdrawalProofReaderWithoutStop.Mark(1)
-		log.Debug("failed to get withdrawal proof reader, please stop flush disk")
+		log.Warn("failed to get withdrawal proof reader, please stop flush disk")
 		return nil, errAllowedBackgroundFlushing
 	}
 	nf.mux.RLock()

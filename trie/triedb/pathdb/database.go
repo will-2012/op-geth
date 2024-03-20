@@ -209,6 +209,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 func (db *Database) Reader(root common.Hash) (layer, error) {
 	l := db.tree.get(root)
 	if l == nil {
+		db.DisableBackgroundFlush()
 		r, err := db.tree.bottom().buffer.withdrawalProofReader(root)
 		if err == nil && r != nil {
 			return r, nil
