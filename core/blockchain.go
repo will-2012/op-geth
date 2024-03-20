@@ -1815,6 +1815,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			continue
 		}
 
+		time.Sleep(1 * time.Second)
+
 		var (
 			receipts, receiptExist = bc.miningReceiptsCache.Get(block.Hash())
 			logs, logExist         = bc.miningTxLogsCache.Get(block.Hash())
