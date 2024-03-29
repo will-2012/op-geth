@@ -130,6 +130,9 @@ type panicLogger struct{}
 func (l panicLogger) Infof(format string, args ...interface{}) {
 }
 
+func (l panicLogger) Errorf(format string, args ...interface{}) {
+}
+
 func (l panicLogger) Fatalf(format string, args ...interface{}) {
 	panic(errors.Errorf("fatal: "+format, args...))
 }
@@ -598,8 +601,8 @@ func (b *batch) Reset() {
 func (b *batch) Replay(w ethdb.KeyValueWriter) error {
 	reader := b.b.Reader()
 	for {
-		kind, k, v, ok := reader.Next()
-		if !ok {
+		kind, k, v, ok, err := reader.Next()
+		if !ok || err != nil {
 			break
 		}
 		// The (k,v) slices might be overwritten if the batch is reset/reused,
@@ -670,7 +673,6 @@ func (iter *pebbleIterator) Release() { iter.iter.Close() }
 
 func (d *Database) NewCheckpoint(destDir string) error {
 	var opts []pebble.CheckpointOption
-	opt := pebble.WithFlushedWAL()
-	opts = append(opts, opt)
+	opts = append(opts, pebble.WithFlushedWAL(), pebble.ConcurrentLinkOrCopy(10))
 	return d.db.Checkpoint(destDir, opts...)
 }
