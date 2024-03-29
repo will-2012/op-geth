@@ -1,6 +1,8 @@
 module github.com/ethereum/go-ethereum
 
-go 1.20
+go 1.21
+
+toolchain go1.21.8
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.2.0
@@ -13,7 +15,7 @@ require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/cespare/cp v1.1.1
 	github.com/cloudflare/cloudflare-go v0.79.0
-	github.com/cockroachdb/errors v1.9.1
+	github.com/cockroachdb/errors v1.11.1
 	github.com/cockroachdb/pebble v0.0.0-20230928194634-aa077af62593
 	github.com/cometbft/cometbft v0.37.2
 	github.com/consensys/gnark-crypto v0.12.1
@@ -70,7 +72,7 @@ require (
 	golang.org/x/crypto v0.18.0
 	golang.org/x/exp v0.0.0-20231214170342-aacd6d4b4611
 	golang.org/x/sync v0.5.0
-	golang.org/x/sys v0.16.0
+	golang.org/x/sys v0.17.0
 	golang.org/x/text v0.14.0
 	golang.org/x/time v0.3.0
 	golang.org/x/tools v0.16.0
@@ -81,7 +83,7 @@ require (
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.7.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.3.0 // indirect
-	github.com/DataDog/zstd v1.5.2 // indirect
+	github.com/DataDog/zstd v1.5.6-0.20230824185856-869dae002e5e // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.13 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.43 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.37 // indirect
@@ -96,7 +98,8 @@ require (
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
-	github.com/cockroachdb/redact v1.1.3 // indirect
+	github.com/cockroachdb/redact v1.1.5 // indirect
+	github.com/cockroachdb/swiss v0.0.0-20240303172742-c161743eb608 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/consensys/bavard v0.1.13 // indirect
 	github.com/cosmos/gogoproto v1.4.11 // indirect
@@ -179,6 +182,9 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/cometbft/cometbft => github.com/bnb-chain/greenfield-cometbft v1.0.0
+replace (
+	github.com/cockroachdb/pebble => github.com/will-2012/pebble v0.0.0-20240329130540-bfc352d618bd
+	github.com/cometbft/cometbft => github.com/bnb-chain/greenfield-cometbft v1.0.0
+)
 
 //replace github.com/ethereum-optimism/superchain-registry/superchain => ../superchain-registry/superchain
