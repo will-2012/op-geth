@@ -1834,6 +1834,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			err               error
 		)
 
+		time.Sleep(1 * time.Second)
+
 		// skip block process if we already have the state, receipts and logs from mining work
 		if !(receiptExist && logExist && stateExist) {
 			// Retrieve the parent block and it's state to execute on top
