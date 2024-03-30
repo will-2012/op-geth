@@ -670,7 +670,7 @@ func (iter *pebbleIterator) Release() { iter.iter.Close() }
 
 func (d *Database) NewCheckpoint(destDir string) error {
 	var opts []pebble.CheckpointOption
-	opt := pebble.WithFlushedWAL()
-	opts = append(opts, opt)
+	opts = append(opts, pebble.WithFlushedWAL())
+	opts = append(opts, pebble.ConcurrentLinkOrCopy(10))
 	return d.db.Checkpoint(destDir, opts...)
 }

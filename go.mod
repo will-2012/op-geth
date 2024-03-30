@@ -1,6 +1,6 @@
 module github.com/ethereum/go-ethereum
 
-go 1.21
+go 1.20
 
 //toolchain go1.22.0
 
@@ -95,7 +95,6 @@ require (
 	github.com/aws/smithy-go v1.15.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.7.0 // indirect
-	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.3 // indirect
@@ -181,6 +180,9 @@ require (
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-replace github.com/cometbft/cometbft => github.com/bnb-chain/greenfield-cometbft v1.0.0
+replace (
+	github.com/cockroachdb/pebble => github.com/will-2012/pebble v0.0.0-20240329135136-b95d6951fd69
+	github.com/cometbft/cometbft => github.com/bnb-chain/greenfield-cometbft v1.0.0
+)
 
 //replace github.com/ethereum-optimism/superchain-registry/superchain => ../superchain-registry/superchain
