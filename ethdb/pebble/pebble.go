@@ -667,3 +667,81 @@ func (iter *pebbleIterator) Value() []byte {
 // Release releases associated resources. Release should always succeed and can
 // be called multiple times without causing error.
 func (iter *pebbleIterator) Release() { iter.iter.Close() }
+
+var (
+	// Checkpoint range of Path-based storage scheme of merkle patricia trie.
+	trieAccountBeginByteWise = []byte("A") // which is equal to rawdb.trieNodeAccountPrefix
+	trieAccountEndByteWise   = []byte("B") // A next byte-wise is B
+	trieStorageBeginByteWise = []byte("O") // which is equal to rawdb.trieNodeStoragePrefix
+	trieStorageEndByteWise   = []byte("P") // O next byte-wise is P
+)
+
+func (d *Database) NewCheckpoint(destDir string) error {
+	var (
+		opts  []pebble.CheckpointOption
+		spans []pebble.CheckpointSpan
+	)
+
+	spans = append(spans, pebble.CheckpointSpan{
+		Start: trieAccountBeginByteWise,
+		End:   trieAccountEndByteWise,
+	})
+	spans = append(spans, pebble.CheckpointSpan{
+		Start: trieStorageBeginByteWise,
+		End:   trieStorageEndByteWise,
+	})
+	opts = append(opts, pebble.WithRestrictToSpans(spans))
+	opts = append(opts, pebble.WithFlushedWAL())
+	return d.db.Checkpoint(destDir, opts...)
+}
+
+// OpenCheckpointDB returns a wrapped checkpoint pebble DB object.
+func OpenCheckpointDB(file string, blockCache *pebble.Cache, tableCache *pebble.TableCache) (*Database, error) {
+	namespace := "checkpoint"
+	logger := log.New(namespace, file)
+	logger.Info("Open checkpoint db", "checkpoint_dir", file)
+
+	db := &Database{
+		fn:       file,
+		log:      logger,
+		quitChan: make(chan chan error),
+	}
+	opt := &pebble.Options{
+		Cache:                    blockCache,
+		TableCache:               tableCache,
+		MaxConcurrentCompactions: func() int { return 1 },
+		ReadOnly:                 true,
+		EventListener: &pebble.EventListener{
+			CompactionBegin: db.onCompactionBegin,
+			CompactionEnd:   db.onCompactionEnd,
+			WriteStallBegin: db.onWriteStallBegin,
+			WriteStallEnd:   db.onWriteStallEnd,
+		},
+		Logger: panicLogger{}, // TODO(karalabe): Delete when this is upstreamed in Pebble
+	}
+
+	// Open the db and recover any potential corruptions
+	innerDB, err := pebble.Open(file, opt)
+	if err != nil {
+		return nil, err
+	}
+	db.db = innerDB
+
+	db.compTimeMeter = metrics.NewRegisteredMeter(namespace+"compact/time", nil)
+	db.compReadMeter = metrics.NewRegisteredMeter(namespace+"compact/input", nil)
+	db.compWriteMeter = metrics.NewRegisteredMeter(namespace+"compact/output", nil)
+	db.diskSizeGauge = metrics.NewRegisteredGauge(namespace+"disk/size", nil)
+	db.diskReadMeter = metrics.NewRegisteredMeter(namespace+"disk/read", nil)
+	db.diskWriteMeter = metrics.NewRegisteredMeter(namespace+"disk/write", nil)
+	db.writeDelayMeter = metrics.NewRegisteredMeter(namespace+"compact/writedelay/duration", nil)
+	db.writeDelayNMeter = metrics.NewRegisteredMeter(namespace+"compact/writedelay/counter", nil)
+	db.memCompGauge = metrics.NewRegisteredGauge(namespace+"compact/memory", nil)
+	db.level0CompGauge = metrics.NewRegisteredGauge(namespace+"compact/level0", nil)
+	db.nonlevel0CompGauge = metrics.NewRegisteredGauge(namespace+"compact/nonlevel0", nil)
+	db.seekCompGauge = metrics.NewRegisteredGauge(namespace+"compact/seek", nil)
+	db.manualMemAllocGauge = metrics.NewRegisteredGauge(namespace+"memory/manualalloc", nil)
+
+	// Start up the metrics gathering and return
+	go db.meter(metricsGatheringInterval, namespace)
+	return db, nil
+}
