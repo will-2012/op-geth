@@ -482,6 +482,8 @@ func (d *Database) meter(refresh time.Duration, namespace string) {
 			nonLevel0CompCount = int64(d.nonLevel0Comp.Load())
 			level0CompCount    = int64(d.level0Comp.Load())
 		)
+
+		fmt.Printf("Loop print db stats, namespace=%v\n%v\n", namespace, stats)
 		writeDelayTimes[i%2] = writeDelayTime
 		writeDelayCounts[i%2] = writeDelayCount
 		compTimes[i%2] = compTime
@@ -710,7 +712,7 @@ func OpenCheckpointDB(file string, blockCache *pebble.Cache, tableCache *pebble.
 		Cache:                    blockCache,
 		TableCache:               tableCache,
 		MaxConcurrentCompactions: func() int { return 1 },
-		ReadOnly:                 true,
+		ReadOnly:                 false,
 		EventListener: &pebble.EventListener{
 			CompactionBegin: db.onCompactionBegin,
 			CompactionEnd:   db.onCompactionEnd,
