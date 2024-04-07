@@ -491,6 +491,7 @@ func (nf *nodebufferlist) backgroundFlush() {
 // loop runs the background task, collects the nodes for writing to disk.
 func (nf *nodebufferlist) loop() {
 	loopFlushTicker := time.NewTicker(time.Second * mergeMultiDifflayerInterval)
+	defer loopFlushTicker.Stop()
 
 	for {
 		select {
@@ -560,16 +561,16 @@ func (nf *nodebufferlist) proposedBlockReader(blockRoot common.Hash) (layer, err
 	nf.mux.RLock()
 	defer nf.mux.RUnlock()
 
-	if nf.count < nf.rsevMdNum {
-		ckptLayer, err := nf.checkpointManager.getCheckpointLayer(blockRoot)
-		if err != nil {
-			proposedBlockReaderLessDifflayer.Mark(1)
-			log.Error("proposed block state is not available", "block_root", blockRoot.String(), "bufferlist_count", nf.count)
-			return nil, fmt.Errorf("proposed block proof state %#x is not available", blockRoot.String())
-		}
-		// Just restart and need to read from checkpoint.
-		return ckptLayer, nil
-	}
+	//if nf.count < nf.rsevMdNum {
+	//	ckptLayer, err := nf.checkpointManager.getCheckpointLayer(blockRoot)
+	//	if err != nil {
+	//		proposedBlockReaderLessDifflayer.Mark(1)
+	//		log.Error("proposed block state is not available", "block_root", blockRoot.String(), "bufferlist_count", nf.count)
+	//		return nil, fmt.Errorf("proposed block proof state %#x is not available", blockRoot.String())
+	//	}
+	//	// Just restart and need to read from checkpoint.
+	//	return ckptLayer, nil
+	//}
 	var diff *multiDifflayer
 	context := []interface{}{
 		"root", blockRoot,
