@@ -59,6 +59,8 @@ type nodebufferlist struct {
 	forceFlushCh     chan struct{}
 	waitForceFlushCh chan struct{}
 	stopCh           chan struct{}
+	revertCh         chan map[common.Hash]map[string]*trienode.Node
+	waitRevertCh     chan error
 
 	checkpointManager *checkpointManager
 }
@@ -115,6 +117,8 @@ func newNodeBufferList(
 		stopCh:            make(chan struct{}),
 		forceFlushCh:      make(chan struct{}),
 		waitForceFlushCh:  make(chan struct{}),
+		revertCh:          make(chan map[common.Hash]map[string]*trienode.Node),
+		waitRevertCh:      make(chan error),
 		checkpointManager: newCheckpointManager(db, checkpointDir, enableCheckpoint, wpBlocks, maxCheckpointNumber),
 	}
 	go nf.loop()
@@ -207,21 +211,8 @@ func (nf *nodebufferlist) revert(db ethdb.KeyValueReader, nodes map[common.Hash]
 	defer nf.mux.Unlock()
 	defer nf.baseMux.Unlock()
 
-	merge := func(buffer *multiDifflayer) bool {
-		if err := nf.base.commit(buffer.root, buffer.id, buffer.block, buffer.layers, buffer.nodes); err != nil {
-			log.Crit("failed to commit nodes to base node buffer", "error", err)
-		}
-		_ = nf.popBack()
-		return true
-	}
-	nf.traverseReverse(merge)
-	nc := newMultiDifflayer(nf.limit, 0, common.Hash{}, make(map[common.Hash]map[string]*trienode.Node), 0)
-	nf.head = nc
-	nf.tail = nc
-	nf.size = 0
-	nf.layers = 0
-	nf.count = 1
-	return nf.base.revert(nf.db, nodes)
+	nf.revertCh <- nodes
+	return <-nf.waitRevertCh
 }
 
 // flush persists the in-memory dirty trie node into the disk if the configured
@@ -542,6 +533,24 @@ func (nf *nodebufferlist) loop() {
 			nf.layers = 0
 
 			nf.waitForceFlushCh <- struct{}{}
+
+		case revertUpdates := <-nf.revertCh: // revert the buffer updates.
+			merge := func(buffer *multiDifflayer) bool {
+				if err := nf.base.commit(buffer.root, buffer.id, buffer.block, buffer.layers, buffer.nodes); err != nil {
+					log.Crit("failed to commit nodes to base node buffer", "error", err)
+				}
+				_ = nf.popBack()
+				return true
+			}
+			nf.traverseReverse(merge)
+			nc := newMultiDifflayer(nf.limit, 0, common.Hash{}, make(map[common.Hash]map[string]*trienode.Node), 0)
+			nf.head = nc
+			nf.tail = nc
+			nf.size = 0
+			nf.layers = 0
+			nf.count = 1
+			err := nf.base.revert(nf.db, revertUpdates)
+			nf.waitRevertCh <- err
 		}
 	}
 }
