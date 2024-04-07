@@ -29,6 +29,9 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		StateHistory                            uint64                 `toml:",omitempty"`
 		StateScheme                             string                 `toml:",omitempty"`
 		PathSyncFlush           				bool                   `toml:",omitempty"`
+		ProposeBlockInterval 					uint64 				   `toml:",omitempty"`
+		EnableCheckpoint 						bool                   `toml:",omitempty"`
+		MaxCheckpointNumber 					uint64 				   `toml:",omitempty"`
 		RequiredBlocks                          map[uint64]common.Hash `toml:"-"`
 		LightServ                               int                    `toml:",omitempty"`
 		LightIngress                            int                    `toml:",omitempty"`
@@ -79,6 +82,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TransactionHistory = c.TransactionHistory
 	enc.StateHistory = c.StateHistory
 	enc.StateScheme = c.StateScheme
+	enc.ProposeBlockInterval = c.ProposeBlockInterval
 	enc.PathSyncFlush = c.PathSyncFlush
 	enc.RequiredBlocks = c.RequiredBlocks
 	enc.LightServ = c.LightServ
@@ -135,6 +139,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		StateHistory                            *uint64                `toml:",omitempty"`
 		StateScheme                             *string                `toml:",omitempty"`
 		PathSyncFlush           				*bool                  `toml:",omitempty"`
+		ProposeBlockInterval 					*uint64 			   `toml:",omitempty"`
+		EnableCheckpoint 						*bool 				   `toml:",omitempty"`
+		MaxCheckpointNumber 					*uint64 			   `toml:",omitempty"`
 		RequiredBlocks                          map[uint64]common.Hash `toml:"-"`
 		LightServ                               *int                   `toml:",omitempty"`
 		LightIngress                            *int                   `toml:",omitempty"`
@@ -212,6 +219,15 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.PathSyncFlush != nil {
 		c.PathSyncFlush = *dec.PathSyncFlush
+	}
+	if dec.ProposeBlockInterval != nil {
+		c.ProposeBlockInterval = *dec.ProposeBlockInterval
+	}
+	if dec.EnableCheckpoint != nil {
+		c.EnableCheckpoint = *dec.EnableCheckpoint
+	}
+	if dec.MaxCheckpointNumber != nil {
+		c.MaxCheckpointNumber = *dec.MaxCheckpointNumber
 	}
 	if dec.RequiredBlocks != nil {
 		c.RequiredBlocks = dec.RequiredBlocks
