@@ -147,6 +147,9 @@ type Database struct {
 	tree       *layerTree               // The group for all known layers
 	freezer    *rawdb.ResettableFreezer // Freezer for storing trie histories, nil possible in tests
 	lock       sync.RWMutex             // Lock to prevent mutations from happening at the same time
+
+	// todo: keeper
+	keeper *withDrawProofKeeper
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -191,6 +194,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 			log.Warn("Truncated extra state histories", "number", pruned)
 		}
 	}
+	// todo: keeper init
 	// Disable database in case node is still in the initial state sync stage.
 	if rawdb.ReadSnapSyncStatusFlag(diskdb) == rawdb.StateSyncRunning && !db.readOnly {
 		if err := db.Disable(); err != nil {
@@ -370,6 +374,7 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 	}
 	rawdb.DeleteTrieJournal(db.diskdb)
 	_, err := truncateFromHead(db.diskdb, db.freezer, dl.stateID())
+	// todo truncate proof
 	if err != nil {
 		return err
 	}

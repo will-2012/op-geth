@@ -277,6 +277,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		if err != nil {
 			return nil, err
 		}
+		// todo: async wait, hold reader
 	}
 	// Mark the diskLayer as stale before applying any mutations on top.
 	dl.stale = true

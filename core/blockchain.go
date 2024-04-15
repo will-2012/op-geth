@@ -305,7 +305,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		chainConfig:         chainConfig,
 		cacheConfig:         cacheConfig,
 		db:                  db,
-		triedb:              triedb,
+		triedb:              triedb, //
 		triegc:              prque.New[int64, common.Hash](nil),
 		quit:                make(chan struct{}),
 		chainmu:             syncx.NewClosableMutex(),
@@ -1449,11 +1449,17 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	if err := blockBatch.Write(); err != nil {
 		log.Crit("Failed to write block into disk", "err", err)
 	}
+
+	// todo
+
 	// Commit all cached state changes into underlying memory database.
 	root, err := state.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()))
 	if err != nil {
 		return err
 	}
+	// todo:
+	// keep the proof
+
 	// If node is running in path mode, skip explicit gc operation
 	// which is unnecessary in this mode.
 	if bc.triedb.Scheme() == rawdb.PathScheme {

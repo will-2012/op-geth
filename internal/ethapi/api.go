@@ -659,23 +659,6 @@ func (s *BlockChainAPI) GetBalance(ctx context.Context, address common.Address, 
 	return (*hexutil.Big)(state.GetBalance(address)), state.Error()
 }
 
-// Result structs for GetProof
-type AccountResult struct {
-	Address      common.Address  `json:"address"`
-	AccountProof []string        `json:"accountProof"`
-	Balance      *hexutil.Big    `json:"balance"`
-	CodeHash     common.Hash     `json:"codeHash"`
-	Nonce        hexutil.Uint64  `json:"nonce"`
-	StorageHash  common.Hash     `json:"storageHash"`
-	StorageProof []StorageResult `json:"storageProof"`
-}
-
-type StorageResult struct {
-	Key   string       `json:"key"`
-	Value *hexutil.Big `json:"value"`
-	Proof []string     `json:"proof"`
-}
-
 // proofList implements ethdb.KeyValueWriter and collects the proofs as
 // hex-strings for delivery to rpc-caller.
 type proofList []string
@@ -690,14 +673,14 @@ func (n *proofList) Delete(key []byte) error {
 }
 
 // GetProof returns the Merkle-proof for a given account and optionally some storage keys.
-func (s *BlockChainAPI) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNrOrHash rpc.BlockNumberOrHash) (*AccountResult, error) {
+func (s *BlockChainAPI) GetProof(ctx context.Context, address common.Address, storageKeys []string, blockNrOrHash rpc.BlockNumberOrHash) (*common.AccountResult, error) {
 	header, err := headerByNumberOrHash(ctx, s.b, blockNrOrHash)
 	if err != nil {
 		return nil, err
 	}
 	if s.b.ChainConfig().IsOptimismPreBedrock(header.Number) {
 		if s.b.HistoricalRPCService() != nil {
-			var res AccountResult
+			var res common.AccountResult
 			err := s.b.HistoricalRPCService().CallContext(ctx, &res, "eth_getProof", address, storageKeys, blockNrOrHash)
 			if err != nil {
 				return nil, fmt.Errorf("historical backend error: %w", err)
@@ -707,10 +690,16 @@ func (s *BlockChainAPI) GetProof(ctx context.Context, address common.Address, st
 			return nil, rpc.ErrNoHistoricalFallback
 		}
 	}
+	// todo: keeper
+	defer func() {
+		// if failed, query proof-keeper for proposer
+		// if is proposer query, query keeper
+
+	}()
 	var (
 		keys         = make([]common.Hash, len(storageKeys))
 		keyLengths   = make([]int, len(storageKeys))
-		storageProof = make([]StorageResult, len(storageKeys))
+		storageProof = make([]common.StorageResult, len(storageKeys))
 	)
 	// Deserialize all keys. This prevents state access on invalid input.
 	for i, hexKey := range storageKeys {
@@ -750,7 +739,7 @@ func (s *BlockChainAPI) GetProof(ctx context.Context, address common.Address, st
 				outputKey = hexutil.Encode(key[:])
 			}
 			if storageTrie == nil {
-				storageProof[i] = StorageResult{outputKey, &hexutil.Big{}, []string{}}
+				storageProof[i] = common.StorageResult{outputKey, &hexutil.Big{}, []string{}}
 				continue
 			}
 			var proof proofList
@@ -758,7 +747,7 @@ func (s *BlockChainAPI) GetProof(ctx context.Context, address common.Address, st
 				return nil, err
 			}
 			value := (*hexutil.Big)(statedb.GetState(address, key).Big())
-			storageProof[i] = StorageResult{outputKey, value, proof}
+			storageProof[i] = common.StorageResult{outputKey, value, proof}
 		}
 	}
 	// Create the accountProof.
@@ -770,7 +759,7 @@ func (s *BlockChainAPI) GetProof(ctx context.Context, address common.Address, st
 	if err := tr.Prove(crypto.Keccak256(address.Bytes()), &accountProof); err != nil {
 		return nil, err
 	}
-	return &AccountResult{
+	return &common.AccountResult{
 		Address:      address,
 		AccountProof: accountProof,
 		Balance:      (*hexutil.Big)(statedb.GetBalance(address)),

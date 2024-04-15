@@ -475,3 +475,20 @@ func (d *Decimal) UnmarshalJSON(input []byte) error {
 		return err
 	}
 }
+
+// Result structs for GetProof
+type AccountResult struct {
+	Address      Address         `json:"address"`
+	AccountProof []string        `json:"accountProof"`
+	Balance      *hexutil.Big    `json:"balance"`
+	CodeHash     Hash            `json:"codeHash"`
+	Nonce        hexutil.Uint64  `json:"nonce"`
+	StorageHash  Hash            `json:"storageHash"`
+	StorageProof []StorageResult `json:"storageProof"`
+}
+
+type StorageResult struct {
+	Key   string       `json:"key"`
+	Value *hexutil.Big `json:"value"`
+	Proof []string     `json:"proof"`
+}

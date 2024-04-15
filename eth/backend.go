@@ -100,7 +100,7 @@ type Ethereum struct {
 	networkID     uint64
 	netRPCService *ethapi.NetAPI
 
-	p2pServer *p2p.Server
+	p2pServer *p2p.Server // todo
 
 	lock sync.RWMutex // Protects the variadic fields (e.g. gas price and etherbase)
 
@@ -318,7 +318,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 
 	// Register the backend on the node
 	stack.RegisterAPIs(eth.APIs())
-	stack.RegisterProtocols(eth.Protocols())
+	stack.RegisterProtocols(eth.Protocols()) // todo
 	stack.RegisterLifecycle(eth)
 
 	// Successful startup; push a marker and check previous unclean shutdowns.
@@ -534,7 +534,7 @@ func (s *Ethereum) SyncMode() downloader.SyncMode {
 
 // Protocols returns all the currently configured
 // network protocols to start.
-func (s *Ethereum) Protocols() []p2p.Protocol {
+func (s *Ethereum) Protocols() []p2p.Protocol { // todo
 	protos := eth.MakeProtocols((*ethHandler)(s.handler), s.networkID, s.ethDialCandidates)
 	if s.config.SnapshotCache > 0 {
 		protos = append(protos, snap.MakeProtocols((*snapHandler)(s.handler), s.snapDialCandidates)...)

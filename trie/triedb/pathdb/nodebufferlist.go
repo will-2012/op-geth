@@ -173,6 +173,7 @@ func (nf *nodebufferlist) commit(root common.Hash, id uint64, block uint64, node
 	if err != nil {
 		log.Crit("failed to commit nodes to node buffer list", "error", err)
 	}
+	// TODO: async notify watcher and wait.
 
 	nf.stateId = id
 	nf.block = block
@@ -341,6 +342,8 @@ func (nf *nodebufferlist) waitAndStopFlushing() {
 		time.Sleep(time.Second)
 		log.Warn("waiting background node buffer to be flushed to disk")
 	}
+
+	// wait finish 3600
 }
 
 // setClean sets fastcache to trienodebuffer for cache the trie nodes, used for nodebufferlist.
@@ -534,7 +537,7 @@ func (nf *nodebufferlist) loop() {
 func (nf *nodebufferlist) proposedBlockReader(blockRoot common.Hash) (layer, error) {
 	nf.mux.RLock()
 	defer nf.mux.RUnlock()
-	
+
 	var diff *multiDifflayer
 	context := []interface{}{
 		"root", blockRoot,
