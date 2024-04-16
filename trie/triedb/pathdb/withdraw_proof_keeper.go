@@ -43,6 +43,7 @@ type withDrawProofKeeperOptions struct {
 	enable           bool
 	proposedInterval uint64
 	contractAddress  common.Address
+	rpcClient        *rpc.Client
 }
 
 // It is used in buffer-list mode
@@ -50,7 +51,7 @@ type withDrawProofKeeper struct {
 	opts                     *withDrawProofKeeperOptions
 	keeperMetaDB             ethdb.Database // ensure the proofs which are held in proofDataDb is continuous.
 	proofDataDB              *rawdb.ResettableFreezer
-	selfRpc                  *rpc.Client
+	selfClient               *ethclient.Client
 	needUpdateKeeperMetaOnce bool // only update once on startup.
 
 	// for event loop
@@ -68,13 +69,17 @@ func newWithDrawProofKeeper(keeperMetaDB ethdb.Database, opts *withDrawProofKeep
 	)
 
 	if ancientDir, err = keeperMetaDB.AncientDatadir(); err != nil {
+		log.Crit("Failed to get ancient data dir", "error", err)
 		return nil, err
 	}
 	keeper = &withDrawProofKeeper{
+		opts:                     opts,
 		keeperMetaDB:             keeperMetaDB,
 		needUpdateKeeperMetaOnce: true,
+		selfClient:               ethclient.NewClient(opts.rpcClient),
 	}
 	if keeper.proofDataDB, err = rawdb.NewProofFreezer(ancientDir, false); err != nil {
+		log.Crit("Failed to new proof ancient freezer", "error", err)
 		return nil, err
 	}
 
@@ -240,7 +245,6 @@ func (keeper *withDrawProofKeeper) eventLoop() {
 			proofID := uint64(1)
 			metaList := keeper.getKeeperMetaList()
 			isTruncateKeeperMeta := false
-			//var err error
 
 			// In rare cases such as abnormal restart or reorg, truncate may occur.
 			if len(metaList) == 0 {
@@ -271,8 +275,7 @@ func (keeper *withDrawProofKeeper) eventLoop() {
 			keeper.needUpdateKeeperMetaOnce = false
 
 			// add proof data
-			client := ethclient.NewClient(keeper.selfRpc)
-			rawPoof, _ := client.GetProof(context.Background(), l2ToL1MessagePasserAddr, nil, strconv.FormatUint(blockID, 16))
+			rawPoof, _ := keeper.selfClient.GetProof(context.Background(), l2ToL1MessagePasserAddr, nil, strconv.FormatUint(blockID, 16))
 			withDrawProof := &proofData{
 				proofID:       proofID,
 				blockID:       blockID,
@@ -305,7 +308,7 @@ func (keeper *withDrawProofKeeper) keepWithDrawProofIfNeeded(blockID uint64) {
 }
 
 // for query
-func (keeper *withDrawProofKeeper) isWithDrawProofQuery() bool {
+func (keeper *withDrawProofKeeper) IsProposeProofQuery(address common.Address, storageKeys []string, blockID uint64) bool {
 	if !keeper.opts.enable {
 		return false
 	}
@@ -313,10 +316,11 @@ func (keeper *withDrawProofKeeper) isWithDrawProofQuery() bool {
 }
 
 // for query
-func (keeper *withDrawProofKeeper) queryWithDrawProof() {
+func (keeper *withDrawProofKeeper) QueryProposeProof(blockID uint64) (*common.AccountResult, error) {
 	// getProofIDByBlockID
 	keeper.QueryProofCh <- struct{}{}
 	<-keeper.WaitQueryProofCh
+	return nil, nil
 }
 
 // for reorg

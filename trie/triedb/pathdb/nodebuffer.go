@@ -63,6 +63,13 @@ func newNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.Node, l
 	}
 }
 
+func (b *nodebuffer) IsProposeProofQuery(address common.Address, storageKeys []string, blockID uint64) bool {
+	return false
+}
+func (b *nodebuffer) QueryProposeProof(blockID uint64) (*common.AccountResult, error) {
+	return nil, nil
+}
+
 // node retrieves the trie node with given node info.
 func (b *nodebuffer) node(owner common.Hash, path []byte, hash common.Hash) (*trienode.Node, error) {
 	subset, ok := b.nodes[owner]

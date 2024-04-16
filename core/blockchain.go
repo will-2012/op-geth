@@ -47,6 +47,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
@@ -160,6 +161,9 @@ type CacheConfig struct {
 	SnapshotWait         bool                  // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
 
 	TrieCommitInterval uint64 // Define a block height interval, commit trie every TrieCommitInterval block height.
+
+	// propose withdraw proof keeper
+	RpcClient *rpc.Client
 }
 
 // triedbConfig derives the configures for trie database.
@@ -177,6 +181,7 @@ func (c *CacheConfig) triedbConfig() *trie.Config {
 			CleanCacheSize:       c.TrieCleanLimit * 1024 * 1024,
 			DirtyCacheSize:       c.TrieDirtyLimit * 1024 * 1024,
 			ProposeBlockInterval: c.ProposeBlockInterval,
+			RpcClient:            c.RpcClient,
 		}
 	}
 	return config

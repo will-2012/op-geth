@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 )
@@ -100,6 +101,8 @@ type Config struct {
 	DirtyCacheSize       int            // Maximum memory allowance (in bytes) for caching dirty nodes
 	ReadOnly             bool           // Flag whether the database is opened in read only mode.
 	ProposeBlockInterval uint64         // Propose block to L1 block interval.
+	// todo: keeper
+	RpcClient *rpc.Client
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -218,6 +221,10 @@ func (db *Database) Reader(root common.Hash) (layer, error) {
 	return l, nil
 }
 
+func (db *Database) GetProofKeeper() (trienodebuffer, error) {
+	return db.tree.bottom().buffer, nil
+}
+
 // Update adds a new layer into the tree, if that can be linked to an existing
 // old parent. It is disallowed to insert a disk layer (the origin of all). Apart
 // from that this function will flatten the extra diff layers at bottom into disk
@@ -322,7 +329,12 @@ func (db *Database) Enable(root common.Hash) error {
 	}
 	// Re-construct a new disk layer backed by persistent state
 	// with **empty clean cache and node buffer**.
-	nb := NewTrieNodeBuffer(db.diskdb, db.config.TrieNodeBufferType, db.bufferSize, nil, 0, db.config.ProposeBlockInterval)
+	opts := &nodebufferListOptions{
+		proposeBlockInterval: db.config.ProposeBlockInterval,
+		enableProofKeeper:    true,
+		rpcClient:            db.config.RpcClient,
+	}
+	nb := NewTrieNodeBuffer(db.diskdb, db.config.TrieNodeBufferType, db.bufferSize, nil, 0, opts)
 	dl := newDiskLayer(root, 0, db, nil, nb)
 	nb.setClean(dl.cleans)
 	db.tree.reset(dl)

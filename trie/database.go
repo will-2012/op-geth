@@ -160,6 +160,15 @@ func (db *Database) Reader(blockRoot common.Hash) (Reader, error) {
 	return nil, errors.New("unknown backend")
 }
 
+// todo:
+func (db *Database) ProofKeeper() (ProofKeeper, error) {
+	switch b := db.backend.(type) {
+	case *pathdb.Database:
+		return b.GetProofKeeper()
+	}
+	return nil, errors.New("unknown backend")
+}
+
 // Update performs a state transition by committing dirty nodes contained in the
 // given set in order to update state from the specified parent to the specified
 // root. The held pre-images accumulated up to this point will be flushed in case
