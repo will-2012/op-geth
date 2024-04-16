@@ -115,6 +115,9 @@ var (
 	trieNodeStoragePrefix = []byte("O") // trieNodeStoragePrefix + accountHash + hexPath -> trie node
 	stateIDPrefix         = []byte("L") // stateIDPrefix + state root -> state id
 
+	// todo: keeper meta
+	ProofKeeperMetaPrefix = []byte("p") // proofKeeperMetaPrefix + num (uint64 big endian) -> proof keeper meta
+
 	PreimagePrefix = []byte("secure-key-")       // PreimagePrefix + hash -> preimage
 	configPrefix   = []byte("ethereum-config-")  // config prefix for the db
 	genesisPrefix  = []byte("ethereum-genesis-") // genesis state prefix for the db
@@ -154,6 +157,11 @@ func encodeBlockNumber(number uint64) []byte {
 // headerKeyPrefix = headerPrefix + num (uint64 big endian)
 func headerKeyPrefix(number uint64) []byte {
 	return append(headerPrefix, encodeBlockNumber(number)...)
+}
+
+// proofKeeperMetaKey = ProofKeeperMetaPrefix + num (uint64 big endian)
+func proofKeeperMetaKey(number uint64) []byte {
+	return append(ProofKeeperMetaPrefix, encodeBlockNumber(number)...)
 }
 
 // headerKey = headerPrefix + num (uint64 big endian) + hash
