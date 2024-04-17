@@ -82,8 +82,6 @@ type trienodebuffer interface {
 	// proposedBlockReader return the world state Reader of block that is proposed to L1.
 	proposedBlockReader(blockRoot common.Hash) (layer, error)
 
-	// getProofKeeper() (trie.ProofKeeper, error)
-
 	IsProposeProofQuery(address common.Address, storageKeys []string, blockID uint64) bool
 	QueryProposeProof(blockID uint64) (*common.AccountResult, error)
 }

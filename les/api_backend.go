@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/light"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 type LesApiBackend struct {
@@ -46,6 +47,10 @@ type LesApiBackend struct {
 	allowUnprotectedTxs bool
 	eth                 *LightEthereum
 	gpo                 *gasprice.Oracle
+}
+
+func (b *LesApiBackend) TrieDatabase() *trie.Database {
+	return nil
 }
 
 func (b *LesApiBackend) ChainConfig() *params.ChainConfig {

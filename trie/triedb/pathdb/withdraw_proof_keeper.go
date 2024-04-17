@@ -3,6 +3,7 @@ package pathdb
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -57,8 +58,8 @@ type withDrawProofKeeper struct {
 	// for event loop
 	UpdateProofDataCh     chan uint64
 	WaitUpdateProofDataCh chan struct{}
-	QueryProofCh          chan struct{}
-	WaitQueryProofCh      chan struct{}
+	QueryProofCh          chan uint64
+	WaitQueryProofCh      chan *common.AccountResult
 }
 
 func newWithDrawProofKeeper(keeperMetaDB ethdb.Database, opts *withDrawProofKeeperOptions) (*withDrawProofKeeper, error) {
@@ -85,22 +86,13 @@ func newWithDrawProofKeeper(keeperMetaDB ethdb.Database, opts *withDrawProofKeep
 
 	keeper.UpdateProofDataCh = make(chan uint64)
 	keeper.WaitUpdateProofDataCh = make(chan struct{})
-	keeper.QueryProofCh = make(chan struct{})
-	keeper.WaitQueryProofCh = make(chan struct{})
+	keeper.QueryProofCh = make(chan uint64)
+	keeper.WaitQueryProofCh = make(chan *common.AccountResult)
 
 	go keeper.eventLoop()
 
+	log.Info("Succeed to init proof keeper", "options", opts)
 	return keeper, nil
-}
-
-func (keeper *withDrawProofKeeper) getProofIDByBlockID(blockID uint64) uint64 {
-	return 0
-}
-
-func (keeper *withDrawProofKeeper) getLatestKeeperMeta() *keeperMeta {
-	// scan
-	// truncate keeper meta
-	return nil
 }
 
 func (keeper *withDrawProofKeeper) getKeeperMetaList() []keeperMeta {
@@ -155,6 +147,7 @@ func (keeper *withDrawProofKeeper) truncateKeeperMetaHeadIfNeeded(blockID uint64
 	return isTruncate
 }
 
+// for gc
 func (keeper *withDrawProofKeeper) truncateKeeperMetaTail(blockID uint64) {
 	//return nil
 }
@@ -183,6 +176,7 @@ func (keeper *withDrawProofKeeper) truncateProofDataHeadIfNeeded(blockID uint64)
 	rawdb.TruncateProofHead(keeper.proofDataDB, truncateProofID)
 }
 
+// for gc
 func (keeper *withDrawProofKeeper) truncateProofDataTail(proofID uint64) {
 	//return nil
 }
@@ -229,9 +223,6 @@ func (keeper *withDrawProofKeeper) queryProofData(proofID uint64) *proofData {
 	return &data
 }
 
-// seekto
-
-// todo: event loop
 func (keeper *withDrawProofKeeper) eventLoop() {
 	gcTicker := time.NewTicker(time.Second * gcIntervalSecond)
 	defer gcTicker.Stop()
@@ -282,18 +273,38 @@ func (keeper *withDrawProofKeeper) eventLoop() {
 				withDrawProof: rawPoof,
 			}
 			keeper.addProofData(withDrawProof)
-
 			keeper.WaitUpdateProofDataCh <- struct{}{}
-		case <-keeper.QueryProofCh:
-			// query meta to get proofid
-			// query data by proofid
-			// some check
-			keeper.WaitQueryProofCh <- struct{}{}
+
+		case blockID := <-keeper.QueryProofCh:
+			var result *common.AccountResult
+
+			metaList := keeper.getKeeperMetaList()
+			if len(metaList) != 0 {
+				proofID := uint64(0)
+				index := len(metaList) - 1
+				for index >= 0 {
+					m := metaList[index]
+					if blockID >= m.blockID {
+						if blockID%m.proposedInterval != 0 { // check
+							break
+						}
+						proofID = m.proofID + (blockID-m.blockID)/m.proposedInterval
+						break
+					}
+					index = index - 1
+				}
+				if proofID != 0 {
+					proof := keeper.queryProofData(proofID)
+					if proof.blockID == blockID { // check
+						result = proof.withDrawProof
+					}
+				}
+			}
+			keeper.WaitQueryProofCh <- result
 		}
 	}
 }
 
-// for store, is a sync interface
 func (keeper *withDrawProofKeeper) keepWithDrawProofIfNeeded(blockID uint64) {
 	if !keeper.opts.enable {
 		return
@@ -307,24 +318,29 @@ func (keeper *withDrawProofKeeper) keepWithDrawProofIfNeeded(blockID uint64) {
 	<-keeper.WaitUpdateProofDataCh
 }
 
-// for query
+// IsProposeProofQuery is used to determine whether it is proposed proof.
 func (keeper *withDrawProofKeeper) IsProposeProofQuery(address common.Address, storageKeys []string, blockID uint64) bool {
 	if !keeper.opts.enable {
+		return false
+	}
+	if keeper.opts.contractAddress.Cmp(address) != 0 {
+		return false
+	}
+	if len(storageKeys) != 0 {
+		return false
+	}
+	if blockID%keeper.opts.proposedInterval != 0 {
 		return false
 	}
 	return true
 }
 
-// for query
+// QueryProposeProof is used to get proof which is stored in ancient proof.
 func (keeper *withDrawProofKeeper) QueryProposeProof(blockID uint64) (*common.AccountResult, error) {
-	// getProofIDByBlockID
-	keeper.QueryProofCh <- struct{}{}
-	<-keeper.WaitQueryProofCh
-	return nil, nil
-}
-
-// for reorg
-func (keeper *withDrawProofKeeper) revert() {
-	// action in event loop
-	// nil
+	keeper.QueryProofCh <- blockID
+	result := <-keeper.WaitQueryProofCh
+	if result == nil {
+		return nil, fmt.Errorf("proof is not found")
+	}
+	return result, nil
 }

@@ -43,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 // EthAPIBackend implements ethapi.Backend and tracers.Backend for full nodes
@@ -52,6 +53,10 @@ type EthAPIBackend struct {
 	disableTxPool       bool
 	eth                 *Ethereum
 	gpo                 *gasprice.Oracle
+}
+
+func (b *EthAPIBackend) TrieDatabase() *trie.Database {
+	return b.eth.blockchain.TrieDB()
 }
 
 // ChainConfig returns the active chain configuration.

@@ -136,10 +136,11 @@ func newNodeBufferList(
 }
 
 func (nf *nodebufferlist) IsProposeProofQuery(address common.Address, storageKeys []string, blockID uint64) bool {
-	return false
+	return nf.proofKeeper.IsProposeProofQuery(address, storageKeys, blockID)
 }
+
 func (nf *nodebufferlist) QueryProposeProof(blockID uint64) (*common.AccountResult, error) {
-	return nil, nil
+	return nf.proofKeeper.QueryProposeProof(blockID)
 }
 
 // node retrieves the trie node with given node info.
