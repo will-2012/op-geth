@@ -47,6 +47,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
@@ -83,13 +84,13 @@ var (
 	blockExecutionTimer  = metrics.NewRegisteredTimer("chain/execution", nil)
 	blockWriteTimer      = metrics.NewRegisteredTimer("chain/write", nil)
 
-	blockWriteExternalTimer = metrics.NewRegisteredTimer("chain/block/write/external", nil)
-	stateCommitExternalTimer = metrics.NewRegisteredTimer("chain/state/commit/external", nil)
+	blockWriteExternalTimer   = metrics.NewRegisteredTimer("chain/block/write/external", nil)
+	stateCommitExternalTimer  = metrics.NewRegisteredTimer("chain/state/commit/external", nil)
 	triedbCommitExternalTimer = metrics.NewRegisteredTimer("chain/triedb/commit/external", nil)
-	innerExecutionTimer = metrics.NewRegisteredTimer("chain/inner/execution", nil)
+	innerExecutionTimer       = metrics.NewRegisteredTimer("chain/inner/execution", nil)
 
 	blockGasUsedGauge = metrics.NewRegisteredGauge("chain/block/gas/used", nil)
-	mgaspsGauge = metrics.NewRegisteredGauge("chain/mgas/ps", nil)
+	mgaspsGauge       = metrics.NewRegisteredGauge("chain/mgas/ps", nil)
 
 	blockReorgMeter     = metrics.NewRegisteredMeter("chain/reorg/executes", nil)
 	blockReorgAddMeter  = metrics.NewRegisteredMeter("chain/reorg/add", nil)
@@ -160,6 +161,9 @@ type CacheConfig struct {
 	SnapshotWait         bool                  // Wait for snapshot construction on startup. TODO(karalabe): This is a dirty hack for testing, nuke it
 
 	TrieCommitInterval uint64 // Define a block height interval, commit trie every TrieCommitInterval block height.
+
+	// propose withdraw proof keeper
+	RpcClient *rpc.Client
 }
 
 // triedbConfig derives the configures for trie database.
@@ -177,6 +181,7 @@ func (c *CacheConfig) triedbConfig() *trie.Config {
 			CleanCacheSize:       c.TrieCleanLimit * 1024 * 1024,
 			DirtyCacheSize:       c.TrieDirtyLimit * 1024 * 1024,
 			ProposeBlockInterval: c.ProposeBlockInterval,
+			RpcClient:            c.RpcClient,
 		}
 	}
 	return config
@@ -313,7 +318,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		chainConfig:         chainConfig,
 		cacheConfig:         cacheConfig,
 		db:                  db,
-		triedb:              triedb,
+		triedb:              triedb, //
 		triegc:              prque.New[int64, common.Hash](nil),
 		quit:                make(chan struct{}),
 		chainmu:             syncx.NewClosableMutex(),
@@ -1460,7 +1465,9 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 	blockWriteExternalTimer.UpdateSince(start)
 	log.Debug("blockWriteExternalTimer", "duration", common.PrettyDuration(time.Since(start)), "hash", block.Hash())
-	
+
+	// todo
+
 	// Commit all cached state changes into underlying memory database.
 	start = time.Now()
 	root, err := state.Commit(block.NumberU64(), bc.chainConfig.IsEIP158(block.Number()))
@@ -1469,6 +1476,8 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 	stateCommitExternalTimer.UpdateSince(start)
 	log.Debug("stateCommitExternalTimer", "duration", common.PrettyDuration(time.Since(start)), "hash", block.Hash())
+	// todo:
+	// keep the proof
 
 	// If node is running in path mode, skip explicit gc operation
 	// which is unnecessary in this mode.
@@ -1477,10 +1486,10 @@ func (bc *BlockChain) writeBlockWithState(block *types.Block, receipts []*types.
 	}
 	// If we're running an archive node, always flush
 	start = time.Now()
-	defer func () {
+	defer func() {
 		triedbCommitExternalTimer.UpdateSince(start)
 		log.Debug("triedbCommitExternalTimer", "duration", common.PrettyDuration(time.Since(start)), "hash", block.Hash())
-	} ()
+	}()
 	if bc.cacheConfig.TrieDirtyDisabled {
 		return bc.triedb.Commit(root, false)
 	}
@@ -1785,7 +1794,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		}
 	}()
 
-	defer func () {
+	defer func() {
 		DebugInnerExecutionDuration = 0
 	}()
 	for ; block != nil && err == nil || errors.Is(err, ErrKnownBlock); block, err = it.next() {
@@ -1908,16 +1917,16 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		proctime := time.Since(start) // processing + validation
 
 		// Update the metrics touched during block processing and validation
-		accountReadTimer.Update(statedb.AccountReads)                   // Account reads are complete(in processing)
-		storageReadTimer.Update(statedb.StorageReads)                   // Storage reads are complete(in processing)
-		snapshotAccountReadTimer.Update(statedb.SnapshotAccountReads)   // Account reads are complete(in processing)
-		snapshotStorageReadTimer.Update(statedb.SnapshotStorageReads)   // Storage reads are complete(in processing)
-		accountUpdateTimer.Update(statedb.AccountUpdates)               // Account updates are complete(in validation)
-		storageUpdateTimer.Update(statedb.StorageUpdates)               // Storage updates are complete(in validation)
-		accountHashTimer.Update(statedb.AccountHashes)                  // Account hashes are complete(in validation)
-		storageHashTimer.Update(statedb.StorageHashes)                  // Storage hashes are complete(in validation)
-		blockExecutionTimer.Update(ptime)                               // The time spent on block execution
-		blockValidationTimer.Update(vtime)                              // The time spent on block validation
+		accountReadTimer.Update(statedb.AccountReads)                 // Account reads are complete(in processing)
+		storageReadTimer.Update(statedb.StorageReads)                 // Storage reads are complete(in processing)
+		snapshotAccountReadTimer.Update(statedb.SnapshotAccountReads) // Account reads are complete(in processing)
+		snapshotStorageReadTimer.Update(statedb.SnapshotStorageReads) // Storage reads are complete(in processing)
+		accountUpdateTimer.Update(statedb.AccountUpdates)             // Account updates are complete(in validation)
+		storageUpdateTimer.Update(statedb.StorageUpdates)             // Storage updates are complete(in validation)
+		accountHashTimer.Update(statedb.AccountHashes)                // Account hashes are complete(in validation)
+		storageHashTimer.Update(statedb.StorageHashes)                // Storage hashes are complete(in validation)
+		blockExecutionTimer.Update(ptime)                             // The time spent on block execution
+		blockValidationTimer.Update(vtime)                            // The time spent on block validation
 
 		innerExecutionTimer.Update(DebugInnerExecutionDuration)
 
@@ -1959,7 +1968,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		}
 		trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ := bc.triedb.Size()
 		stats.report(chain, it.index, snapDiffItems, snapBufItems, trieDiffNodes, trieBufNodes, trieImmutableBufNodes, setHead)
-		blockGasUsedGauge.Update(int64(block.GasUsed())/1000000)
+		blockGasUsedGauge.Update(int64(block.GasUsed()) / 1000000)
 
 		if !setHead {
 			// After merge we expect few side chains. Simply count

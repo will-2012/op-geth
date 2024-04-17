@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/VictoriaMetrics/fastcache"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -46,6 +45,13 @@ func newAsyncNodeBuffer(limit int, nodes map[common.Hash]map[string]*trienode.No
 		current:    newNodeCache(uint64(limit), size, nodes, layers),
 		background: newNodeCache(uint64(limit), 0, make(map[common.Hash]map[string]*trienode.Node), 0),
 	}
+}
+
+func (a *asyncnodebuffer) IsProposeProofQuery(address common.Address, storageKeys []string, blockID uint64) bool {
+	return false
+}
+func (a *asyncnodebuffer) QueryProposeProof(blockID uint64) (*common.AccountResult, error) {
+	return nil, nil
 }
 
 // node retrieves the trie node with given node info.

@@ -85,6 +85,8 @@ type Database struct {
 	diskdb    ethdb.Database // Persistent database to store the snapshot
 	preimages *preimageStore // The store for caching preimages
 	backend   backend        // The backend for managing trie nodes
+
+	// todo keep??
 }
 
 // NewDatabase initializes the trie database with default settings, note
@@ -154,6 +156,15 @@ func (db *Database) Reader(blockRoot common.Hash) (Reader, error) {
 		return b.Reader(blockRoot)
 	case *pathdb.Database:
 		return b.Reader(blockRoot)
+	}
+	return nil, errors.New("unknown backend")
+}
+
+// todo:
+func (db *Database) ProofKeeper() (ProofKeeper, error) {
+	switch b := db.backend.(type) {
+	case *pathdb.Database:
+		return b.GetProofKeeper()
 	}
 	return nil, errors.New("unknown backend")
 }

@@ -36,6 +36,8 @@ type Reader interface {
 	Node(owner common.Hash, path []byte, hash common.Hash) ([]byte, error)
 }
 
+// todo:
+
 // trieReader is a wrapper of the underlying node reader. It's not safe
 // for concurrent usage.
 type trieReader struct {

@@ -81,6 +81,9 @@ type trienodebuffer interface {
 
 	// proposedBlockReader return the world state Reader of block that is proposed to L1.
 	proposedBlockReader(blockRoot common.Hash) (layer, error)
+
+	IsProposeProofQuery(address common.Address, storageKeys []string, blockID uint64) bool
+	QueryProposeProof(blockID uint64) (*common.AccountResult, error)
 }
 
 type NodeBufferType int32
@@ -113,11 +116,11 @@ func GetNodeBufferType(name string) NodeBufferType {
 	return nodeBufferStringToType[name]
 }
 
-func NewTrieNodeBuffer(db ethdb.Database, trieNodeBufferType NodeBufferType, limit int, nodes map[common.Hash]map[string]*trienode.Node, layers, proposeBlockInterval uint64) trienodebuffer {
+func NewTrieNodeBuffer(db ethdb.Database, trieNodeBufferType NodeBufferType, limit int, nodes map[common.Hash]map[string]*trienode.Node, layers uint64, opts *nodebufferListOptions) trienodebuffer {
 	log.Info("init trie node buffer", "type", nodeBufferTypeToString[trieNodeBufferType])
 	switch trieNodeBufferType {
 	case NodeBufferList:
-		return newNodeBufferList(db, uint64(limit), nodes, layers, proposeBlockInterval)
+		return newNodeBufferList(db, uint64(limit), nodes, layers, opts)
 	case AsyncNodeBuffer:
 		return newAsyncNodeBuffer(limit, nodes, layers)
 	case SyncNodeBuffer:
@@ -277,6 +280,7 @@ func (dl *diskLayer) commit(bottom *diffLayer, force bool) (*diskLayer, error) {
 		if err != nil {
 			return nil, err
 		}
+		// todo: async wait, hold reader
 	}
 	// Mark the diskLayer as stale before applying any mutations on top.
 	dl.stale = true

@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 )
@@ -100,6 +101,8 @@ type Config struct {
 	DirtyCacheSize       int            // Maximum memory allowance (in bytes) for caching dirty nodes
 	ReadOnly             bool           // Flag whether the database is opened in read only mode.
 	ProposeBlockInterval uint64         // Propose block to L1 block interval.
+	// todo: keeper
+	RpcClient *rpc.Client
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -147,6 +150,9 @@ type Database struct {
 	tree       *layerTree               // The group for all known layers
 	freezer    *rawdb.ResettableFreezer // Freezer for storing trie histories, nil possible in tests
 	lock       sync.RWMutex             // Lock to prevent mutations from happening at the same time
+
+	// todo: keeper
+	keeper *withDrawProofKeeper
 }
 
 // New attempts to load an already existing layer from a persistent key-value
@@ -191,6 +197,7 @@ func New(diskdb ethdb.Database, config *Config) *Database {
 			log.Warn("Truncated extra state histories", "number", pruned)
 		}
 	}
+	// todo: keeper init
 	// Disable database in case node is still in the initial state sync stage.
 	if rawdb.ReadSnapSyncStatusFlag(diskdb) == rawdb.StateSyncRunning && !db.readOnly {
 		if err := db.Disable(); err != nil {
@@ -212,6 +219,10 @@ func (db *Database) Reader(root common.Hash) (layer, error) {
 		return nil, fmt.Errorf("state %#x is not available", root)
 	}
 	return l, nil
+}
+
+func (db *Database) GetProofKeeper() (trienodebuffer, error) {
+	return db.tree.bottom().buffer, nil
 }
 
 // Update adds a new layer into the tree, if that can be linked to an existing
@@ -318,7 +329,12 @@ func (db *Database) Enable(root common.Hash) error {
 	}
 	// Re-construct a new disk layer backed by persistent state
 	// with **empty clean cache and node buffer**.
-	nb := NewTrieNodeBuffer(db.diskdb, db.config.TrieNodeBufferType, db.bufferSize, nil, 0, db.config.ProposeBlockInterval)
+	opts := &nodebufferListOptions{
+		proposeBlockInterval: db.config.ProposeBlockInterval,
+		enableProofKeeper:    true,
+		rpcClient:            db.config.RpcClient,
+	}
+	nb := NewTrieNodeBuffer(db.diskdb, db.config.TrieNodeBufferType, db.bufferSize, nil, 0, opts)
 	dl := newDiskLayer(root, 0, db, nil, nb)
 	nb.setClean(dl.cleans)
 	db.tree.reset(dl)
@@ -370,6 +386,7 @@ func (db *Database) Recover(root common.Hash, loader triestate.TrieLoader) error
 	}
 	rawdb.DeleteTrieJournal(db.diskdb)
 	_, err := truncateFromHead(db.diskdb, db.freezer, dl.stateID())
+	// todo truncate proof
 	if err != nil {
 		return err
 	}

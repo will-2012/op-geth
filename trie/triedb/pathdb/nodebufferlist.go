@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethereum/go-ethereum/trie/trienode"
 	"github.com/ethereum/go-ethereum/trie/triestate"
 )
@@ -30,6 +31,12 @@ const (
 )
 
 var _ trienodebuffer = &nodebufferlist{}
+
+type nodebufferListOptions struct {
+	proposeBlockInterval uint64
+	enableProofKeeper    bool
+	rpcClient            *rpc.Client
+}
 
 // nodebufferlist implements the trienodebuffer interface, it is designed to meet
 // the withdraw proof function of opBNB at the storage layer while taking into
@@ -61,6 +68,9 @@ type nodebufferlist struct {
 	isFlushing   atomic.Bool // Flag indicates writing disk under background.
 	stopFlushing atomic.Bool // Flag stops writing disk under background.
 	stopCh       chan struct{}
+
+	// todo:
+	proofKeeper *withDrawProofKeeper
 }
 
 // newNodeBufferList initializes the node buffer list with the provided nodes
@@ -69,11 +79,11 @@ func newNodeBufferList(
 	limit uint64,
 	nodes map[common.Hash]map[string]*trienode.Node,
 	layers uint64,
-	proposeBlockInterval uint64) *nodebufferlist {
+	opts *nodebufferListOptions) *nodebufferlist {
 	var (
 		rsevMdNum uint64
 		dlInMd    uint64
-		wpBlocks  = proposeBlockInterval
+		wpBlocks  = opts.proposeBlockInterval
 	)
 	if wpBlocks == 0 {
 		rsevMdNum = DefaultReserveMultiDifflayerNumber
@@ -111,12 +121,26 @@ func newNodeBufferList(
 		persistID: rawdb.ReadPersistentStateID(db),
 		stopCh:    make(chan struct{}),
 	}
+	keeperOpt := &withDrawProofKeeperOptions{
+		enable:           opts.enableProofKeeper,
+		proposedInterval: opts.proposeBlockInterval,
+		contractAddress:  l2ToL1MessagePasserAddr,
+	}
+	nf.proofKeeper, _ = newWithDrawProofKeeper(db, keeperOpt)
 	go nf.loop()
 
 	log.Info("new node buffer list", "proposed block interval", nf.wpBlocks,
 		"reserve multi difflayers", nf.rsevMdNum, "difflayers in multidifflayer", nf.dlInMd,
 		"limit", common.StorageSize(limit), "layers", layers, "persist id", nf.persistID)
 	return nf
+}
+
+func (nf *nodebufferlist) IsProposeProofQuery(address common.Address, storageKeys []string, blockID uint64) bool {
+	return nf.proofKeeper.IsProposeProofQuery(address, storageKeys, blockID)
+}
+
+func (nf *nodebufferlist) QueryProposeProof(blockID uint64) (*common.AccountResult, error) {
+	return nf.proofKeeper.QueryProposeProof(blockID)
 }
 
 // node retrieves the trie node with given node info.
@@ -173,6 +197,7 @@ func (nf *nodebufferlist) commit(root common.Hash, id uint64, block uint64, node
 	if err != nil {
 		log.Crit("failed to commit nodes to node buffer list", "error", err)
 	}
+	// TODO: async notify watcher and wait.
 
 	nf.stateId = id
 	nf.block = block
@@ -341,6 +366,8 @@ func (nf *nodebufferlist) waitAndStopFlushing() {
 		time.Sleep(time.Second)
 		log.Warn("waiting background node buffer to be flushed to disk")
 	}
+
+	// wait finish 3600
 }
 
 // setClean sets fastcache to trienodebuffer for cache the trie nodes, used for nodebufferlist.
