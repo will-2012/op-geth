@@ -328,7 +328,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	worker.recommit = recommit
 
 	// Sanitize the timeout config for creating payload.
-	newpayloadTimeout := worker.config.NewPayloadTimeout
+	newpayloadTimeout := worker.config.NewPayloadTimeout // 需要看一下，650ms？？
 	if newpayloadTimeout == 0 {
 		log.Warn("Sanitizing new payload timeout to default", "provided", newpayloadTimeout, "updated", DefaultConfig.NewPayloadTimeout)
 		newpayloadTimeout = DefaultConfig.NewPayloadTimeout
@@ -1256,6 +1256,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		return nil, err
 	}
 	if header.ParentBeaconRoot != nil {
+		// 含义是什么？？
 		context := core.NewEVMBlockContext(header, w.chain, nil, w.chainConfig, env.state)
 		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
 		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv, env.state)
