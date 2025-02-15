@@ -674,7 +674,7 @@ func (w *worker) opLoop() {
 	defer w.wg.Done()
 	for {
 		select {
-		case req := <-w.getWorkCh:
+		case req := <-w.getWorkCh: // here
 			req.result <- w.generateWork(req.params)
 		case <-w.exitCh:
 			return
@@ -918,6 +918,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 	return receipt, err
 }
 
+// 怎么理解？？
 func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transactionsByPriceAndNonce, interrupt *atomic.Int32) error {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
@@ -1162,12 +1163,13 @@ func (w *worker) validateParams(genParams *generateParams) (time.Duration, error
 	}
 
 	// Sanity check the timestamp correctness
-	blockTime := int64(genParams.timestamp) - int64(parent.Time)
+	blockTime := int64(genParams.timestamp) - int64(parent.Time) // 这里是秒级别时间戳？？
 	if blockTime <= 0 && genParams.forceTime {
 		return 0, fmt.Errorf("invalid timestamp, parent %d given %d", parent.Time, genParams.timestamp)
 	}
 
 	// minimum payload build time of 1s
+	// 这里需要调整
 	if blockTime < 1 {
 		blockTime = 1
 	}
@@ -1250,7 +1252,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
 	// since clique algorithm can modify the coinbase field in header.
-	env, err := w.makeEnv(parent, header, genParams.coinbase)
+	env, err := w.makeEnv(parent, header, genParams.coinbase /*这个参数啥用？？*/)
 	if err != nil {
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
@@ -1291,7 +1293,7 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 		filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(*env.header.ExcessBlobGas))
 	}
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
-	pendingPlainTxs := w.eth.TxPool().Pending(filter)
+	pendingPlainTxs := w.eth.TxPool().Pending(filter) // filte txs from txpool
 
 	filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
 	pendingBlobTxs := w.eth.TxPool().Pending(filter)
@@ -1303,7 +1305,7 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 	localPlainTxs, remotePlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
 	localBlobTxs, remoteBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
 
-	for _, account := range w.eth.TxPool().Locals() {
+	for _, account := range w.eth.TxPool().Locals() { // local pool
 		if txs := remotePlainTxs[account]; len(txs) > 0 {
 			delete(remotePlainTxs, account)
 			localPlainTxs[account] = txs
@@ -1359,6 +1361,7 @@ func (w *worker) estimateGasForTxDAG(env *environment) uint64 {
 }
 
 // generateWork generates a sealing block based on the given parameters.
+// 重要，仔细看看
 func (w *worker) generateWork(genParams *generateParams) *newPayloadResult {
 	// TODO delete after debug performance metrics
 	core.DebugInnerExecutionDuration = 0
@@ -1412,7 +1415,7 @@ func (w *worker) generateWork(genParams *generateParams) *newPayloadResult {
 		if interrupt == nil {
 			interrupt = new(atomic.Int32)
 		}
-		timer := time.AfterFunc(w.newpayloadTimeout, func() {
+		timer := time.AfterFunc(w.newpayloadTimeout /**/ /*这个参数*/, func() {
 			interrupt.Store(commitInterruptTimeout)
 		})
 		if w.config.Mev.MevEnabled {
@@ -1450,7 +1453,7 @@ func (w *worker) generateWork(genParams *generateParams) *newPayloadResult {
 			if w.chain.TxDAGEnabledWhenMine() {
 				work.state.MVStates().EnableAsyncGen()
 			}
-			err := w.fillTransactions(interrupt, work)
+			err := w.fillTransactions(interrupt /*这个很重要，外部可以中断内部的*/, work)
 			timer.Stop() // don't need timeout interruption any more
 			if errors.Is(err, errBlockInterruptedByTimeout) {
 				log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout), "parentHash", genParams.parentHash)

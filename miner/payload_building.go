@@ -56,7 +56,7 @@ type BuildPayloadArgs struct {
 }
 
 // Id computes an 8-byte identifier by hashing the components of the payload arguments.
-func (args *BuildPayloadArgs) Id() engine.PayloadID {
+func (args *BuildPayloadArgs) Id() engine.PayloadID { // payload计算方式
 	// Hash
 	hasher := sha256.New()
 	hasher.Write(args.Parent[:])
@@ -203,6 +203,7 @@ func (payload *Payload) WaitFull() {
 }
 
 func (payload *Payload) resolve(onlyFull bool) *engine.ExecutionPayloadEnvelope {
+	// 终止
 	payload.lock.Lock()
 	defer payload.lock.Unlock()
 
@@ -331,9 +332,9 @@ func (w *worker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 
 	fullParams := &generateParams{
 		timestamp:   args.Timestamp,
-		forceTime:   true,
+		forceTime:   true, // 什么意思？？
 		parentHash:  args.Parent,
-		coinbase:    args.FeeRecipient,
+		coinbase:    args.FeeRecipient, //
 		random:      args.Random,
 		withdrawals: args.Withdrawals,
 		beaconRoot:  args.BeaconRoot,
@@ -362,7 +363,7 @@ func (w *worker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	}
 
 	payload := newPayload(nil, args.Id())
-	// set shared interrupt
+	// set shared interrupt； 外部可以中断building
 	fullParams.interrupt = payload.interrupt
 
 	// Spin up a routine for updating the payload in background. This strategy
@@ -370,20 +371,20 @@ func (w *worker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	go func() {
 		// Setup the timer for re-building the payload. The initial clock is kept
 		// for triggering process immediately.
-		timer := time.NewTimer(0)
+		timer := time.NewTimer(0) // 怎么使用？？
 		defer timer.Stop()
 
 		start := time.Now()
 		// Setup the timer for terminating the payload building process as determined
 		// by validateParams.
-		endTimer := time.NewTimer(blockTime)
+		endTimer := time.NewTimer(blockTime) //
 		defer endTimer.Stop()
 
 		timeout := time.Now().Add(blockTime)
 
 		stopReason := "delivery"
 		defer func() {
-			log.Info("Stopping work on payload",
+			log.Info("Stopping work on payload", // 线上grep 日志 看看
 				"id", payload.id,
 				"reason", stopReason,
 				"elapsed", common.PrettyDuration(time.Since(start)))
@@ -404,7 +405,7 @@ func (w *worker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 			} else {
 				log.Error("Failed to build full payload", "id", payload.id, "err", r.err)
 			}
-			timer.Reset(w.recommit)
+			timer.Reset(w.recommit) // 这个是多少？？
 			return dur
 		}
 
@@ -425,7 +426,7 @@ func (w *worker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 					stopReason = "near-timeout"
 					return
 				}
-				lastDuration = updatePayload()
+				lastDuration = updatePayload() // here
 			case <-payload.stop:
 				return
 			case <-endTimer.C:
