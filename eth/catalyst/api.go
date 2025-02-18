@@ -416,7 +416,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 			BeaconRoot:   payloadAttributes.BeaconRoot,
 			NoTxPool:     payloadAttributes.NoTxPool,
 			Transactions: transactions,
-			GasLimit:     payloadAttributes.GasLimit,
+			GasLimit:     payloadAttributes.GasLimit, // 非空
 			Version:      payloadVersion,
 		}
 		id := args.Id()
@@ -443,7 +443,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 			log.Error("Failed to build payload", "err", err)
 			return valid(nil), engine.InvalidPayloadAttributes.With(err)
 		}
-		api.localBlocks.put(id, payload)
+		api.localBlocks.put(id, payload) // here
 		forkchoiceUpdateAttributesTimer.UpdateSince(start)
 		log.Debug("forkchoiceUpdateAttributesTimer", "duration", common.PrettyDuration(time.Since(start)), "id", id)
 		return valid(&id), nil
@@ -609,6 +609,7 @@ func (api *ConsensusAPI) newPayload(params engine.ExecutableData, versionedHashe
 	block := api.localBlocks.getBlockByHash(params.BlockHash)
 	if block == nil {
 		var err error
+		// attributes 到 block
 		block, err = engine.ExecutableDataToBlock(params, versionedHashes, beaconRoot)
 		if err != nil {
 			log.Warn("Invalid NewPayload params", "params", params, "error", err)
@@ -679,7 +680,7 @@ func (api *ConsensusAPI) newPayload(params engine.ExecutableData, versionedHashe
 		return engine.PayloadStatusV1{Status: engine.ACCEPTED}, nil
 	}
 	log.Trace("Inserting block without sethead", "hash", block.Hash(), "number", block.Number)
-	if err := api.eth.BlockChain().InsertBlockWithoutSetHead(block); err != nil {
+	if err := api.eth.BlockChain().InsertBlockWithoutSetHead(block); err != nil { // 塞入chain
 		log.Warn("NewPayloadV1: inserting block failed", "error", err)
 
 		api.invalidLock.Lock()
