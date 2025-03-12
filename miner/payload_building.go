@@ -344,13 +344,16 @@ func (w *worker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 
 	// Since we skip building the empty block when using the tx pool, we need to explicitly
 	// validate the BuildPayloadArgs here.
-	blockTime, err := w.validateParams(fullParams)
-	if err != nil {
-		return nil, err
-	}
+	// TODO: need check it.
+	//blockTime, err := w.validateParams(fullParams)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	blockTime := 500 * time.Millisecond
 
 	//check state of parent block
-	_, err = w.retrieveParentState(fullParams)
+	_, err := w.retrieveParentState(fullParams)
 	if err != nil && strings.Contains(err.Error(), "missing trie node") {
 		log.Error("missing parent state when building block, try to fix...")
 		// fix state data
