@@ -34,4 +34,7 @@ var (
 	slotDeletionCount    = metrics.NewRegisteredMeter("state/delete/storage/slot", nil)
 	slotDeletionSize     = metrics.NewRegisteredMeter("state/delete/storage/size", nil)
 	slotDeletionSkip     = metrics.NewRegisteredGauge("state/delete/storage/skip", nil)
+
+	// perf assemble cost
+	intermediateRootTimer = metrics.NewRegisteredTimer("intermediate/root/time", nil)
 )
