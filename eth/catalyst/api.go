@@ -462,14 +462,14 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 	log.Info("forkchoiceUpdateAttributesTimer",
 		"duration", common.PrettyDuration(time.Since(start)),
 		"cost1", common.PrettyDuration(end1.Sub(start)),
-		"cost2", common.PrettyDuration(end2.Sub(start)),
-		"cost3", common.PrettyDuration(end3.Sub(start)),
-		"cost4", common.PrettyDuration(end4.Sub(start)),
-		"cost5", common.PrettyDuration(end5.Sub(start)),
-		"cost6", common.PrettyDuration(end6.Sub(start)),
-		"cost7", common.PrettyDuration(end7.Sub(start)),
-		"cost8", common.PrettyDuration(end8.Sub(start)),
-		"cost9", common.PrettyDuration(end9.Sub(start)),
+		"cost2", common.PrettyDuration(end2.Sub(end1)),
+		"cost3", common.PrettyDuration(end3.Sub(end2)),
+		"cost4", common.PrettyDuration(end4.Sub(end3)),
+		"cost5", common.PrettyDuration(end5.Sub(end4)),
+		"cost6", common.PrettyDuration(end6.Sub(end5)),
+		"cost7", common.PrettyDuration(end7.Sub(end6)),
+		"cost8", common.PrettyDuration(end8.Sub(end7)),
+		"cost9", common.PrettyDuration(end9.Sub(end8)),
 		"hash", update.HeadBlockHash)
 	return valid(nil), nil
 }
@@ -748,6 +748,7 @@ func (api *ConsensusAPI) opSealPayload(payloadID engine.PayloadID, update engine
 		forkErr.SetStage(engine.GetPayloadStage)
 		return engine.OpSealPayloadResponse{ErrStage: engine.GetPayloadStage}, forkErr
 	}
+	end1 := time.Now()
 	if err != nil {
 		if engineApiErr, ok := err.(*engine.EngineAPIError); ok {
 			engineApiErr.SetStage(engine.GetPayloadStage)
@@ -768,6 +769,7 @@ func (api *ConsensusAPI) opSealPayload(payloadID engine.PayloadID, update engine
 		forkErr.SetStage(engine.NewPayloadStage)
 		return engine.OpSealPayloadResponse{ErrStage: engine.NewPayloadStage}, forkErr
 	}
+	end2 := time.Now()
 	if err != nil {
 		if engineApiErr, ok := err.(*engine.EngineAPIError); ok {
 			engineApiErr.SetStage(engine.NewPayloadStage)
@@ -797,8 +799,16 @@ func (api *ConsensusAPI) opSealPayload(payloadID engine.PayloadID, update engine
 		log.Error("Seal payload status error when forkchoiceUpdated", "payloadStatus", updateResponse.PayloadStatus)
 		return engine.OpSealPayloadResponse{ErrStage: engine.ForkchoiceUpdatedStage, PayloadStatus: updateResponse.PayloadStatus}, nil
 	}
+	end3 := time.Now()
 
-	log.Info("opSealPayload succeed", "hash", payloadEnvelope.ExecutionPayload.BlockHash, "number", payloadEnvelope.ExecutionPayload.Number, "id", payloadID, "payloadStatus", updateResponse.PayloadStatus)
+	log.Info("opSealPayload succeed",
+		"hash", payloadEnvelope.ExecutionPayload.BlockHash,
+		"number", payloadEnvelope.ExecutionPayload.Number,
+		"id", payloadID,
+		"payloadStatus", updateResponse.PayloadStatus,
+		"cost1", common.PrettyDuration(end1.Sub(start)),
+		"cost2", common.PrettyDuration(end2.Sub(end1)),
+		"cost3", common.PrettyDuration(end3.Sub(end2)))
 	if needPayload {
 		return engine.OpSealPayloadResponse{PayloadStatus: updateResponse.PayloadStatus, Payload: payloadEnvelope}, nil
 	} else {
