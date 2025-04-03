@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
@@ -45,12 +46,19 @@ import (
 
 // ReadCanonicalHash retrieves the hash assigned to a canonical block number.
 func ReadCanonicalHash(db ethdb.Reader, number uint64) common.Hash {
+	start := time.Now()
+	defer func() { readCanonicalHashTimer.UpdateSince(start) }()
+
 	var data []byte
 	db.BlockStoreReader().ReadAncients(func(reader ethdb.AncientReaderOp) error {
+		s1 := time.Now()
 		data, _ = reader.Ancient(ChainFreezerHashTable, number)
+		readCanonicalHashAncientTimer.UpdateSince(s1)
 		if len(data) == 0 {
 			// Get it by hash from leveldb
+			s2 := time.Now()
 			data, _ = db.BlockStoreReader().Get(headerHashKey(number))
+			readCanonicalHashDBTimer.UpdateSince(s2)
 		}
 		return nil
 	})
