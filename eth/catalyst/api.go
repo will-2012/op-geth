@@ -46,6 +46,8 @@ var (
 	getPayloadTimer                 = metrics.NewRegisteredTimer("api/engine/get/payload", nil)
 	newPayloadTimer                 = metrics.NewRegisteredTimer("api/engine/new/payload", nil)
 	sealPayloadTimer                = metrics.NewRegisteredTimer("api/engine/seal/payload", nil)
+
+	insertChainTimer = metrics.NewRegisteredTimer("insert/chain/time", nil)
 )
 
 // Register adds the engine API to the full node.
@@ -700,6 +702,9 @@ func (api *ConsensusAPI) newPayload(params engine.ExecutableData, versionedHashe
 		return engine.PayloadStatusV1{Status: engine.ACCEPTED}, nil
 	}
 	log.Trace("Inserting block without sethead", "hash", block.Hash(), "number", block.Number)
+	// TODO:
+
+	s := time.Now()
 	if err := api.eth.BlockChain().InsertBlockWithoutSetHead(block); err != nil {
 		log.Warn("NewPayloadV1: inserting block failed", "error", err)
 
@@ -710,6 +715,7 @@ func (api *ConsensusAPI) newPayload(params engine.ExecutableData, versionedHashe
 
 		return api.invalid(err, parent.Header()), nil
 	}
+	insertChainTimer.UpdateSince(s)
 	// We've accepted a valid payload from the beacon client. Mark the local
 	// chain transitions to notify other subsystems (e.g. downloader) of the
 	// behavioral change.
