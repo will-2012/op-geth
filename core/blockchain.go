@@ -108,6 +108,9 @@ var (
 	errChainStopped         = errors.New("blockchain is stopped")
 	errInvalidOldChain      = errors.New("invalid old chain")
 	errInvalidNewChain      = errors.New("invalid new chain")
+
+	validateStateTimer = metrics.NewRegisteredTimer("validate/state/time", nil)
+	commitStateTimer   = metrics.NewRegisteredTimer("commit/state/time", nil)
 )
 
 const (
@@ -2010,7 +2013,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 				return it.index, err
 			}
 			go func() {
+				// TODO:
+				s := time.Now()
 				asyncValidateStateCh <- bc.validator.ValidateState(block, statedb, receipts, usedGas, true)
+				validateStateTimer.UpdateSince(s)
 			}()
 		} else {
 			if err := bc.validator.ValidateState(block, statedb, receipts, usedGas, false); err != nil {
@@ -2047,7 +2053,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		)
 		if !setHead {
 			// Don't set the head, only insert the block
+			// TODO:
+			s := time.Now()
 			err = bc.writeBlockWithState(block, receipts, statedb)
+			commitStateTimer.UpdateSince(s)
 		} else {
 			status, err = bc.writeBlockAndSetHead(block, receipts, logs, statedb, false)
 		}
