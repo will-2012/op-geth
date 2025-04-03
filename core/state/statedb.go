@@ -1014,6 +1014,8 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 }
 
 func (s *StateDB) AccountsIntermediateRoot() {
+	// TODO:
+
 	tasks := make(chan func())
 	finishCh := make(chan struct{})
 	defer close(finishCh)

@@ -1353,7 +1353,13 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 		}
 	}
 	commitTxpoolTxsTimer.UpdateSince(start)
-	log.Debug("commitTxpoolTxsTimer", "duration", common.PrettyDuration(time.Since(start)), "hash", env.header.Hash())
+	BlockTxLatency.Update(time.Now().Sub(start).Microseconds() / int64(len(env.txs)))
+	BlockTxLen.Update(int64(len(env.txs)))
+	log.Info("commitTxpoolTxsTimer",
+		"duration", common.PrettyDuration(time.Since(start)),
+		"hash", env.header.Hash(),
+		"cost_per_tx_in_microsecond", time.Now().Sub(start).Microseconds()/int64(len(env.txs)),
+		"tx_len_in_block", len(env.txs))
 	return nil
 }
 
@@ -1500,7 +1506,7 @@ func (w *worker) generateWork(genParams *generateParams) *newPayloadResult {
 	}
 
 	assembleBlockTimer.UpdateSince(start)
-	log.Debug("assembleBlockTimer", "duration", common.PrettyDuration(time.Since(start)), "parentHash", genParams.parentHash)
+	log.Info("assembleBlockTimer", "duration", common.PrettyDuration(time.Since(start)), "parentHash", genParams.parentHash)
 
 	accountReadTimer.Update(work.state.AccountReads)                 // Account reads are complete(in commit txs)
 	storageReadTimer.Update(work.state.StorageReads)                 // Storage reads are complete(in commit txs)
@@ -1514,7 +1520,18 @@ func (w *worker) generateWork(genParams *generateParams) *newPayloadResult {
 
 	innerExecutionTimer.Update(core.DebugInnerExecutionDuration)
 
-	log.Debug("build payload statedb metrics", "parentHash", genParams.parentHash, "accountReads", common.PrettyDuration(work.state.AccountReads), "storageReads", common.PrettyDuration(work.state.StorageReads), "snapshotAccountReads", common.PrettyDuration(work.state.SnapshotAccountReads), "snapshotStorageReads", common.PrettyDuration(work.state.SnapshotStorageReads), "accountUpdates", common.PrettyDuration(work.state.AccountUpdates), "storageUpdates", common.PrettyDuration(work.state.StorageUpdates), "accountHashes", common.PrettyDuration(work.state.AccountHashes), "storageHashes", common.PrettyDuration(work.state.StorageHashes))
+	log.Info("build payload statedb metrics",
+		"parentHash", genParams.parentHash,
+		"accountReads", common.PrettyDuration(work.state.AccountReads),
+		"storageReads", common.PrettyDuration(work.state.StorageReads),
+		"snapshotAccountReads", common.PrettyDuration(work.state.SnapshotAccountReads),
+		"snapshotStorageReads", common.PrettyDuration(work.state.SnapshotStorageReads),
+		"accountUpdates", common.PrettyDuration(work.state.AccountUpdates),
+		"storageUpdates", common.PrettyDuration(work.state.StorageUpdates),
+		"accountHashes", common.PrettyDuration(work.state.AccountHashes),
+		"storageHashes", common.PrettyDuration(work.state.StorageHashes),
+		"inner_exe_cost", common.PrettyDuration(core.DebugInnerExecutionDuration),
+		"tx_len", len(work.txs))
 	return &newPayloadResult{
 		block:    block,
 		fees:     totalFees(block, work.receipts),
