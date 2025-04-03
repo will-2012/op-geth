@@ -68,6 +68,9 @@ var (
 	txDAGGenerateTimer = metrics.NewRegisteredTimer("miner/txdag/gen", nil)
 
 	isBuildBlockInterruptCounter = metrics.NewRegisteredCounter("miner/build/interrupt", nil)
+
+	BlockTxLen     = metrics.NewRegisteredGauge("miner/block/tx/len", nil)
+	BlockTxLatency = metrics.NewRegisteredGauge("miner/block/tx/latency", nil)
 )
 
 var defaultCoinBaseAddress = common.HexToAddress("0x4200000000000000000000000000000000000011")
