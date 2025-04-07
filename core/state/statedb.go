@@ -1384,7 +1384,7 @@ func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool) (common.Hash, er
 			storageUpdatedMeter.Mark(int64(s.StorageUpdated))
 			accountDeletedMeter.Mark(int64(s.AccountDeleted))
 			storageDeletedMeter.Mark(int64(s.StorageDeleted))
-			accountTrieUpdatedMeter.Mark(int64(accountTrieNodesUpdated))
+			accountTrieUpdatedMeter.Mark(int64(accountTrieNodesUpdated)) // TODO:
 			accountTrieDeletedMeter.Mark(int64(accountTrieNodesDeleted))
 			//storageTriesUpdatedMeter.Mark(int64(storageTrieNodesUpdated))
 			//storageTriesDeletedMeter.Mark(int64(storageTrieNodesDeleted))
