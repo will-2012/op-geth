@@ -35,6 +35,7 @@ var (
 	trieGetTimer         = metrics.NewRegisteredTimer("trie/get/time", nil)
 	trieReaderGetTimer   = metrics.NewRegisteredTimer("trie/reader/get/time", nil)
 	trieReaderTotalTimer = metrics.NewRegisteredTimer("trie/reader/total/time", nil)
+	trieUpdateTimer      = metrics.NewRegisteredTimer("trie/update/time", nil)
 )
 
 // Trie is a Merkle Patricia Trie. Use New to create a trie that sits on
@@ -321,6 +322,8 @@ func (t *Trie) Update(key, value []byte) error {
 	if t.committed {
 		return ErrCommitted
 	}
+	start := time.Now()
+	defer func() { trieUpdateTimer.UpdateSince(start) }()
 	return t.update(key, value)
 }
 

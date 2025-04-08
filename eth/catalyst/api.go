@@ -46,6 +46,8 @@ var (
 	getPayloadTimer                 = metrics.NewRegisteredTimer("api/engine/get/payload", nil)
 	newPayloadTimer                 = metrics.NewRegisteredTimer("api/engine/new/payload", nil)
 	sealPayloadTimer                = metrics.NewRegisteredTimer("api/engine/seal/payload", nil)
+
+	insertChainTimer = metrics.NewRegisteredTimer("insert/chain/time", nil)
 )
 
 // Register adds the engine API to the full node.
@@ -261,10 +263,13 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 	api.lastForkchoiceUpdate = time.Now()
 	api.lastForkchoiceLock.Unlock()
 
+	end1 := time.Now()
+
 	// Check whether we have the block yet in our database or not. If not, we'll
 	// need to either trigger a sync, or to reject this forkchoice update for a
 	// reason.
 	block := api.eth.BlockChain().GetBlockByHash(update.HeadBlockHash)
+	end2 := time.Now()
 	if block == nil {
 		// If this block was previously invalidated, keep rejecting it here too
 		if res := api.checkInvalidAncestor(update.HeadBlockHash, update.HeadBlockHash); res != nil {
@@ -304,6 +309,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 		}
 		return engine.STATUS_SYNCING, nil
 	}
+	end3 := time.Now()
 	// Block is known locally, just sanity check that the beacon client does not
 	// attempt to push us back to before the merge.
 	if block.Difficulty().BitLen() > 0 || block.NumberU64() == 0 {
@@ -325,6 +331,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 			return engine.ForkChoiceResponse{PayloadStatus: engine.INVALID_TERMINAL_BLOCK, PayloadID: nil}, nil
 		}
 	}
+	end4 := time.Now()
 	valid := func(id *engine.PayloadID) engine.ForkChoiceResponse {
 		return engine.ForkChoiceResponse{
 			PayloadStatus: engine.PayloadStatusV1{Status: engine.VALID, LatestValidHash: &update.HeadBlockHash},
@@ -346,7 +353,9 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 		log.Info("Ignoring beacon update to old head", "number", block.NumberU64(), "hash", update.HeadBlockHash, "age", common.PrettyAge(time.Unix(int64(block.Time()), 0)), "have", api.eth.BlockChain().CurrentBlock().Number)
 		return valid(nil), nil
 	}
+	end5 := time.Now()
 	api.eth.SetSynced()
+	end6 := time.Now()
 
 	// If the beacon client also advertised a finalized block, mark the local
 	// chain final and completely in PoS mode.
@@ -366,6 +375,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 		// Set the finalized block
 		api.eth.BlockChain().SetFinalized(finalBlock.Header())
 	}
+	end7 := time.Now()
 	// Check if the safe block hash is in our canonical tree, if not something is wrong
 	if update.SafeBlockHash != (common.Hash{}) {
 		safeBlock := api.eth.BlockChain().GetBlockByHash(update.SafeBlockHash)
@@ -392,6 +402,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 		}
 
 	}
+	end8 := time.Now()
 	// If payload generation was requested, create a new block to be potentially
 	// sealed by the beacon client. The payload will be requested later, and we
 	// will replace it arbitrarily many times in between.
@@ -448,8 +459,20 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 		log.Debug("forkchoiceUpdateAttributesTimer", "duration", common.PrettyDuration(time.Since(start)), "id", id)
 		return valid(&id), nil
 	}
+	end9 := time.Now()
 	forkchoiceUpdateHeadsTimer.UpdateSince(start)
-	log.Debug("forkchoiceUpdateAttributesTimer", "duration", common.PrettyDuration(time.Since(start)), "hash", update.HeadBlockHash)
+	log.Info("forkchoiceUpdateAttributesTimer",
+		"duration", common.PrettyDuration(time.Since(start)),
+		"cost1", common.PrettyDuration(end1.Sub(start)),
+		"cost2", common.PrettyDuration(end2.Sub(end1)),
+		"cost3", common.PrettyDuration(end3.Sub(end2)),
+		"cost4", common.PrettyDuration(end4.Sub(end3)),
+		"cost5", common.PrettyDuration(end5.Sub(end4)),
+		"cost6", common.PrettyDuration(end6.Sub(end5)),
+		"cost7", common.PrettyDuration(end7.Sub(end6)),
+		"cost8", common.PrettyDuration(end8.Sub(end7)),
+		"cost9", common.PrettyDuration(end9.Sub(end8)),
+		"hash", update.HeadBlockHash)
 	return valid(nil), nil
 }
 
@@ -679,6 +702,9 @@ func (api *ConsensusAPI) newPayload(params engine.ExecutableData, versionedHashe
 		return engine.PayloadStatusV1{Status: engine.ACCEPTED}, nil
 	}
 	log.Trace("Inserting block without sethead", "hash", block.Hash(), "number", block.Number)
+	// TODO:
+
+	s := time.Now()
 	if err := api.eth.BlockChain().InsertBlockWithoutSetHead(block); err != nil {
 		log.Warn("NewPayloadV1: inserting block failed", "error", err)
 
@@ -689,6 +715,7 @@ func (api *ConsensusAPI) newPayload(params engine.ExecutableData, versionedHashe
 
 		return api.invalid(err, parent.Header()), nil
 	}
+	insertChainTimer.UpdateSince(s)
 	// We've accepted a valid payload from the beacon client. Mark the local
 	// chain transitions to notify other subsystems (e.g. downloader) of the
 	// behavioral change.
@@ -727,6 +754,7 @@ func (api *ConsensusAPI) opSealPayload(payloadID engine.PayloadID, update engine
 		forkErr.SetStage(engine.GetPayloadStage)
 		return engine.OpSealPayloadResponse{ErrStage: engine.GetPayloadStage}, forkErr
 	}
+	end1 := time.Now()
 	if err != nil {
 		if engineApiErr, ok := err.(*engine.EngineAPIError); ok {
 			engineApiErr.SetStage(engine.GetPayloadStage)
@@ -747,6 +775,7 @@ func (api *ConsensusAPI) opSealPayload(payloadID engine.PayloadID, update engine
 		forkErr.SetStage(engine.NewPayloadStage)
 		return engine.OpSealPayloadResponse{ErrStage: engine.NewPayloadStage}, forkErr
 	}
+	end2 := time.Now()
 	if err != nil {
 		if engineApiErr, ok := err.(*engine.EngineAPIError); ok {
 			engineApiErr.SetStage(engine.NewPayloadStage)
@@ -776,8 +805,16 @@ func (api *ConsensusAPI) opSealPayload(payloadID engine.PayloadID, update engine
 		log.Error("Seal payload status error when forkchoiceUpdated", "payloadStatus", updateResponse.PayloadStatus)
 		return engine.OpSealPayloadResponse{ErrStage: engine.ForkchoiceUpdatedStage, PayloadStatus: updateResponse.PayloadStatus}, nil
 	}
+	end3 := time.Now()
 
-	log.Info("opSealPayload succeed", "hash", payloadEnvelope.ExecutionPayload.BlockHash, "number", payloadEnvelope.ExecutionPayload.Number, "id", payloadID, "payloadStatus", updateResponse.PayloadStatus)
+	log.Info("opSealPayload succeed",
+		"hash", payloadEnvelope.ExecutionPayload.BlockHash,
+		"number", payloadEnvelope.ExecutionPayload.Number,
+		"id", payloadID,
+		"payloadStatus", updateResponse.PayloadStatus,
+		"cost1", common.PrettyDuration(end1.Sub(start)),
+		"cost2", common.PrettyDuration(end2.Sub(end1)),
+		"cost3", common.PrettyDuration(end3.Sub(end2)))
 	if needPayload {
 		return engine.OpSealPayloadResponse{PayloadStatus: updateResponse.PayloadStatus, Payload: payloadEnvelope}, nil
 	} else {

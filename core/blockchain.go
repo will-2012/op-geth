@@ -108,6 +108,11 @@ var (
 	errChainStopped         = errors.New("blockchain is stopped")
 	errInvalidOldChain      = errors.New("invalid old chain")
 	errInvalidNewChain      = errors.New("invalid new chain")
+
+	validateStateTimer = metrics.NewRegisteredTimer("validate/state/time", nil)
+	commitStateTimer   = metrics.NewRegisteredTimer("commit/state/time", nil)
+
+	setCanonicalTimer = metrics.NewRegisteredTimer("set/canonical/time", nil)
 )
 
 const (
@@ -2010,7 +2015,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 				return it.index, err
 			}
 			go func() {
+				// TODO:
+				s := time.Now()
 				asyncValidateStateCh <- bc.validator.ValidateState(block, statedb, receipts, usedGas, true)
+				validateStateTimer.UpdateSince(s)
 			}()
 		} else {
 			if err := bc.validator.ValidateState(block, statedb, receipts, usedGas, false); err != nil {
@@ -2047,7 +2055,10 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		)
 		if !setHead {
 			// Don't set the head, only insert the block
+			// TODO:
+			s := time.Now()
 			err = bc.writeBlockWithState(block, receipts, statedb)
+			commitStateTimer.UpdateSince(s)
 		} else {
 			status, err = bc.writeBlockAndSetHead(block, receipts, logs, statedb, false)
 		}
@@ -2073,7 +2084,15 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		blockWriteTimer.UpdateSince(wstart)
 		blockInsertTimer.UpdateSince(start)
 
-		log.Debug("New payload db write metrics", "hash", block.Hash(), "insert", common.PrettyDuration(time.Since(start)), "writeDB", common.PrettyDuration(time.Since(wstart)), "writeBlock", common.PrettyDuration(time.Since(wstart)), "accountCommit", common.PrettyDuration(statedb.AccountCommits), "storageCommit", common.PrettyDuration(statedb.StorageCommits), "snapshotCommits", common.PrettyDuration(statedb.SnapshotCommits), "triedbCommit", common.PrettyDuration(statedb.TrieDBCommits))
+		log.Debug("New payload db write metrics",
+			"hash", block.Hash(),
+			"insert", common.PrettyDuration(time.Since(start)),
+			"writeDB", common.PrettyDuration(time.Since(wstart)),
+			"writeBlock", common.PrettyDuration(time.Since(wstart)),
+			"accountCommit", common.PrettyDuration(statedb.AccountCommits),
+			"storageCommit", common.PrettyDuration(statedb.StorageCommits),
+			"snapshotCommits", common.PrettyDuration(statedb.SnapshotCommits),
+			"triedbCommit", common.PrettyDuration(statedb.TrieDBCommits))
 
 		// Report the import stats before returning the various results
 		stats.processed++
@@ -2083,7 +2102,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		if bc.snaps != nil && !minerMode {
 			snapDiffItems, snapBufItems = bc.snaps.Size()
 		}
-		
+
 		var trieDiffNodes, trieBufNodes, trieImmutableBufNodes common.StorageSize
 		if !minerMode {
 			trieDiffNodes, trieBufNodes, trieImmutableBufNodes, _ = bc.triedb.Size()
@@ -2568,6 +2587,10 @@ func (bc *BlockChain) InsertBlockWithoutSetHead(block *types.Block) error {
 // block. It's possible that the state of the new head is missing, and it will
 // be recovered in this function as well.
 func (bc *BlockChain) SetCanonical(head *types.Block) (common.Hash, error) {
+	s0 := time.Now()
+	defer func() { setCanonicalTimer.UpdateSince(s0) }()
+
+	s := time.Now()
 	if !bc.chainmu.TryLock() {
 		return common.Hash{}, errChainStopped
 	}
@@ -2608,6 +2631,8 @@ func (bc *BlockChain) SetCanonical(head *types.Block) (common.Hash, error) {
 		"number", head.Number(),
 		"hash", head.Hash(),
 		"root", head.Root(),
+		"cost", start.Sub(s),
+		"total_cost", time.Since(s0),
 		"elapsed", time.Since(start),
 	}
 	if timestamp := time.Unix(int64(head.Time()), 0); time.Since(timestamp) > time.Minute {
