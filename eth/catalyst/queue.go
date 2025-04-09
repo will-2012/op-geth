@@ -19,10 +19,12 @@ package catalyst
 import (
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
 )
 
@@ -75,8 +77,23 @@ func (q *payloadQueue) put(id engine.PayloadID, payload *miner.Payload) {
 
 // get retrieves a previously stored payload item or nil if it does not exist.
 func (q *payloadQueue) get(id engine.PayloadID, full bool) *engine.ExecutionPayloadEnvelope {
+	var (
+		start time.Time
+		end1  time.Time
+		end2  time.Time
+		end3  time.Time
+	)
+	start = time.Now()
+	defer func() {
+		log.Info("perf get payload",
+			"cost", common.PrettyDuration(end3.Sub(start)),
+			"cost1", common.PrettyDuration(end1.Sub(start)),
+			"cost2", common.PrettyDuration(end2.Sub(end1)),
+			"cost3", common.PrettyDuration(end3.Sub(end2)))
+	}()
 	q.lock.RLock()
 	defer q.lock.RUnlock()
+	end1 = time.Now()
 
 	for _, item := range q.payloads {
 		if item == nil {
@@ -84,7 +101,10 @@ func (q *payloadQueue) get(id engine.PayloadID, full bool) *engine.ExecutionPayl
 		}
 		if item.id == id {
 			if !full {
-				return item.payload.Resolve()
+				end2 = time.Now()
+				a := item.payload.Resolve()
+				end3 = time.Now()
+				return a
 			}
 			return item.payload.ResolveFull()
 		}
