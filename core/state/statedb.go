@@ -30,6 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -134,6 +135,9 @@ type StateDB struct {
 	validRevisions []revision
 	nextRevisionId int
 
+	// State witness if cross validation is needed
+	witness *stateless.Witness
+
 	// Measurements gathered during execution for debugging purposes
 	AccountReads         time.Duration
 	AccountHashes        time.Duration
@@ -227,7 +231,17 @@ func NewStateDBByTrie(tr Trie, db Database, snaps *snapshot.Tree) (*StateDB, err
 // StartPrefetcher initializes a new trie prefetcher to pull in nodes from the
 // state trie concurrently while the state is mutated so that when we reach the
 // commit phase, most of the needed data is already hot.
-func (s *StateDB) StartPrefetcher(namespace string) {
+func (s *StateDB) StartPrefetcher(namespace string, witness *stateless.Witness) {
+	if true {
+		if s.prefetcher != nil {
+			s.prefetcher.close()
+			s.prefetcher = nil
+		}
+		s.witness = witness
+		s.snap = nil
+		return
+	}
+
 	if s.noTrie {
 		return
 	}
@@ -236,8 +250,11 @@ func (s *StateDB) StartPrefetcher(namespace string) {
 		s.prefetcher.close()
 		s.prefetcher = nil
 	}
+	// Enable witness collection if requested
+	s.witness = witness
+
 	if s.snap != nil {
-		s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, namespace)
+		s.prefetcher = newTriePrefetcher(s.db, s.originalRoot, namespace, witness == nil)
 	}
 }
 
@@ -665,47 +682,48 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 		return obj
 	}
 	// If no live objects are available, attempt to use snapshots
-	var data *types.StateAccount
-	if s.snap != nil {
-		start := time.Now()
-		acc, err := s.snap.Account(crypto.HashData(s.hasher, addr.Bytes()))
-		if metrics.EnabledExpensive {
-			s.SnapshotAccountReads += time.Since(start)
-		}
-		if err == nil {
-			if acc == nil {
-				return nil
-			}
-			data = &types.StateAccount{
-				Nonce:    acc.Nonce,
-				Balance:  acc.Balance,
-				CodeHash: acc.CodeHash,
-				Root:     common.BytesToHash(acc.Root),
-			}
-			if len(data.CodeHash) == 0 {
-				data.CodeHash = types.EmptyCodeHash.Bytes()
-			}
-			if data.Root == (common.Hash{}) {
-				data.Root = types.EmptyRootHash
-			}
-		}
-	}
+	// var data *types.StateAccount
+	// if s.snap != nil {
+	// 	start := time.Now()
+	// 	acc, err := s.snap.Account(crypto.HashData(s.hasher, addr.Bytes()))
+	// 	if metrics.EnabledExpensive {
+	// 		s.SnapshotAccountReads += time.Since(start)
+	// 	}
+	// 	if err == nil {
+	// 		if acc == nil {
+	// 			return nil
+	// 		}
+	// 		data = &types.StateAccount{
+	// 			Nonce:    acc.Nonce,
+	// 			Balance:  acc.Balance,
+	// 			CodeHash: acc.CodeHash,
+	// 			Root:     common.BytesToHash(acc.Root),
+	// 		}
+	// 		if len(data.CodeHash) == 0 {
+	// 			data.CodeHash = types.EmptyCodeHash.Bytes()
+	// 		}
+	// 		if data.Root == (common.Hash{}) {
+	// 			data.Root = types.EmptyRootHash
+	// 		}
+	// 	}
+	// }
 	// If snapshot unavailable or reading from it failed, load from the database
-	if data == nil {
-		start := time.Now()
-		var err error
-		data, err = s.trie.GetAccount(addr)
-		if metrics.EnabledExpensive {
-			s.AccountReads += time.Since(start)
-		}
-		if err != nil {
-			s.setError(fmt.Errorf("getDeleteStateObject (%x) error: %w", addr.Bytes(), err))
-			return nil
-		}
-		if data == nil {
-			return nil
-		}
+	//if data == nil {
+	var data *types.StateAccount
+	start := time.Now()
+	var err error
+	data, err = s.trie.GetAccount(addr)
+	if metrics.EnabledExpensive {
+		s.AccountReads += time.Since(start)
 	}
+	if err != nil {
+		s.setError(fmt.Errorf("getDeleteStateObject (%x) error: %w", addr.Bytes(), err))
+		return nil
+	}
+	if data == nil {
+		return nil
+	}
+	//}
 	// Insert into the live set
 	obj := newObject(s, addr, data)
 	s.setStateObject(obj)
@@ -823,6 +841,9 @@ func (s *StateDB) Copy() *StateDB {
 		// miner to operate trie-backed only.
 		snaps: s.snaps,
 		snap:  s.snap,
+	}
+	if s.witness != nil {
+		state.witness = s.witness.Copy()
 	}
 	// Copy the dirty states, logs, and preimages
 	for addr := range s.journal.dirties {
@@ -982,6 +1003,8 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			if s.mvStates != nil && !slices.Contains(feeReceivers, addr) {
 				obj.finaliseRWSet()
 			}
+			// TODO:
+			log.Info("debug finalise storage tree", "addr", addr.Hex())
 			obj.finalise(true) // Prefetch slots in the background
 		}
 		obj.created = false
@@ -992,6 +1015,16 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		// will start loading tries, and when the change is eventually committed,
 		// the commit-phase will be a lot faster
 		addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
+	}
+	log.Info("debug finalise account number",
+		"journal_number", len(s.journal.dirties),
+		"stateobject_number", len(s.stateObjects),
+		"diry_number", len(s.stateObjectsDirty),
+		"pending_number", len(s.stateObjectsPending),
+		"destruct_number", len(s.stateObjectsDestruct),
+		"destruct_dirty_number", len(s.stateObjectsDestructDirty))
+	for dest := range s.stateObjectsDestruct {
+		log.Info("debug finalise destruct", "addr", dest)
 	}
 	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
 		s.prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch)
@@ -1040,6 +1073,12 @@ func (s *StateDB) AccountsIntermediateRoot() {
 				defer wg.Done()
 				obj.updateRoot()
 
+				// If witness building is enabled and the state object has a trie,
+				// gather the witnesses for its specific storage trie
+				if s.witness != nil && obj.trie != nil {
+					s.witness.AddState(obj.trie.Witness())
+				}
+
 				// Cache the data until commit. Note, this update mechanism is not symmetric
 				// to the deletion, because whereas it is enough to track account updates
 				// at commit time, deletions need tracking at transaction boundary level to
@@ -1049,6 +1088,38 @@ func (s *StateDB) AccountsIntermediateRoot() {
 				s.AccountMux.Unlock()
 			}
 		}
+	}
+	// If witness building is enabled, gather all the read-only accesses
+	if s.witness != nil {
+		// Pull in anything that has been accessed before destruction
+		for addr := range s.stateObjectsDestruct {
+			obj, ok := s.stateObjects[addr]
+			if !ok {
+				continue
+			}
+			// Skip any objects that haven't touched their storage
+			if len(obj.originStorage) == 0 {
+				continue
+			}
+			if trie := obj.getPrefetchedTrie(); trie != nil {
+				s.witness.AddState(trie.Witness())
+			} else if obj.trie != nil {
+				s.witness.AddState(obj.trie.Witness())
+			}
+		}
+		// Pull in only-read and non-destructed trie witnesses
+		for _, obj := range s.stateObjects {
+			// Skip any objects that haven't touched their storage
+			if len(obj.originStorage) == 0 {
+				continue
+			}
+			if trie := obj.getPrefetchedTrie(); trie != nil {
+				s.witness.AddState(trie.Witness())
+			} else if obj.trie != nil {
+				s.witness.AddState(obj.trie.Witness())
+			}
+		}
+
 	}
 	wg.Wait()
 }
@@ -1111,7 +1182,12 @@ func (s *StateDB) StateIntermediateRoot() common.Hash {
 	if s.noTrie {
 		return s.expectedRoot
 	} else {
-		return s.trie.Hash()
+		// If witness building is enabled, gather the account trie witness
+		hash := s.trie.Hash()
+		if s.witness != nil {
+			s.witness.AddState(s.trie.Witness())
+		}
+		return hash
 	}
 }
 
@@ -1811,4 +1887,9 @@ func copy2DSet[k comparable](set map[k]map[common.Hash][]byte) map[k]map[common.
 		}
 	}
 	return copied
+}
+
+// Witness retrieves the current state witness being collected.
+func (s *StateDB) Witness() *stateless.Witness {
+	return s.witness
 }

@@ -177,6 +177,23 @@ func (s *stateObject) getTrie() (Trie, error) {
 	return s.trie, nil
 }
 
+// getPrefetchedTrie returns the associated trie, as populated by the prefetcher
+// if it's available.
+//
+// Note, opposed to getTrie, this method will *NOT* blindly cache the resulting
+// trie in the state object. The caller might want to do that, but it's cleaner
+// to break the hidden interdependency between retrieving tries from the db or
+// from the prefetcher.
+func (s *stateObject) getPrefetchedTrie() Trie {
+	// If there's nothing to meaningfully return, let the user figure it out by
+	// pulling the trie from disk.
+	if s.data.Root == types.EmptyRootHash || s.db.prefetcher == nil {
+		return nil
+	}
+	// Attempt to retrieve the trie from the prefetcher
+	return s.db.prefetcher.trie(s.addrHash, s.data.Root)
+}
+
 // GetState retrieves a value from the account storage trie.
 func (s *stateObject) GetState(key common.Hash) common.Hash {
 	// If we have a dirty value for this state entry, return it
@@ -208,42 +225,42 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 	}
 	// If no live objects are available, attempt to use snapshots
 	var (
-		enc   []byte
+		//enc   []byte
 		err   error
 		value common.Hash
 	)
-	if s.db.snap != nil {
-		start := time.Now()
-		enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
-		if metrics.EnabledExpensive {
-			s.db.SnapshotStorageReads += time.Since(start)
-		}
-		if len(enc) > 0 {
-			_, content, _, err := rlp.Split(enc)
-			if err != nil {
-				s.db.setError(err)
-			}
-			value.SetBytes(content)
-		}
+	// if s.db.snap != nil {
+	// 	start := time.Now()
+	// 	enc, err = s.db.snap.Storage(s.addrHash, crypto.Keccak256Hash(key.Bytes()))
+	// 	if metrics.EnabledExpensive {
+	// 		s.db.SnapshotStorageReads += time.Since(start)
+	// 	}
+	// 	if len(enc) > 0 {
+	// 		_, content, _, err := rlp.Split(enc)
+	// 		if err != nil {
+	// 			s.db.setError(err)
+	// 		}
+	// 		value.SetBytes(content)
+	// 	}
+	// }
+	// // If the snapshot is unavailable or reading from it fails, load from the database.
+	// if s.db.snap == nil || err != nil {
+	start := time.Now()
+	tr, err := s.getTrie()
+	if err != nil {
+		s.db.setError(err)
+		return common.Hash{}
 	}
-	// If the snapshot is unavailable or reading from it fails, load from the database.
-	if s.db.snap == nil || err != nil {
-		start := time.Now()
-		tr, err := s.getTrie()
-		if err != nil {
-			s.db.setError(err)
-			return common.Hash{}
-		}
-		val, err := tr.GetStorage(s.address, key.Bytes())
-		if metrics.EnabledExpensive {
-			s.db.StorageReads += time.Since(start)
-		}
-		if err != nil {
-			s.db.setError(err)
-			return common.Hash{}
-		}
-		value.SetBytes(val)
+	val, err := tr.GetStorage(s.address, key.Bytes())
+	if metrics.EnabledExpensive {
+		s.db.StorageReads += time.Since(start)
 	}
+	if err != nil {
+		s.db.setError(err)
+		return common.Hash{}
+	}
+	value.SetBytes(val)
+	//}
 	s.originStorage[key] = value
 	return value
 }
@@ -348,10 +365,20 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		origin  map[common.Hash][]byte
 		hasher  = crypto.NewKeccakState()
 	)
-	tr, err := s.getTrie()
-	if err != nil {
-		s.db.setError(err)
-		return nil, err
+	// Retrieve a pretecher populated trie, or fall back to the database. This will
+	// block until all prefetch tasks are done, which are needed for witnesses even
+	// for unmodified state objects.
+	tr := s.getPrefetchedTrie()
+	if tr != nil {
+		// Prefetcher returned a live trie, swap it out for the current one
+		s.trie = tr
+	} else {
+		var err error
+		tr, err = s.getTrie()
+		if err != nil {
+			s.db.setError(err)
+			return nil, err
+		}
 	}
 	// Insert all the pending storage updates into the trie
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
