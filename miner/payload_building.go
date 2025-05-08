@@ -203,12 +203,33 @@ func (payload *Payload) WaitFull() {
 }
 
 func (payload *Payload) resolve(onlyFull bool) *engine.ExecutionPayloadEnvelope {
+	var (
+		start time.Time
+		end1  time.Time
+		end2  time.Time
+		end3  time.Time
+		end4  time.Time
+		end5  time.Time
+	)
+	start = time.Now()
+	defer func() {
+		end5 = time.Now()
+		log.Info("perf resolve",
+			"cost", common.PrettyDuration(end5.Sub(start)),
+			"cost1", common.PrettyDuration(end1.Sub(start)),
+			"cost2", common.PrettyDuration(end2.Sub(end1)),
+			"cost3", common.PrettyDuration(end3.Sub(end2)),
+			"cost4", common.PrettyDuration(end4.Sub(end3)),
+			"cost5", common.PrettyDuration(end5.Sub(end4)))
+	}()
 	payload.lock.Lock()
 	defer payload.lock.Unlock()
+	end1 = time.Now()
 
 	// We interrupt any active building block to prevent it from adding more transactions,
 	// and if it is an update, don't attempt to seal the block.
 	payload.interruptBuilding()
+	end2 = time.Now()
 
 	if payload.full == nil && (onlyFull || payload.empty == nil) {
 		select {
@@ -222,11 +243,13 @@ func (payload *Payload) resolve(onlyFull bool) *engine.ExecutionPayloadEnvelope 
 		start := time.Now()
 		payload.cond.Wait()
 		waitPayloadTimer.UpdateSince(start)
-		log.Debug("waitPayloadTimer", "duration", common.PrettyDuration(time.Since(start)), "id", payload.id)
+		log.Info("waitPayloadTimer", "duration", common.PrettyDuration(time.Since(start)), "id", payload.id)
 	}
+	end3 = time.Now()
 
 	// Now we can signal the building routine to stop.
 	payload.stopBuilding()
+	end4 = time.Now()
 
 	if payload.full != nil {
 		return engine.BlockToExecutableData(payload.full, payload.fullFees, payload.sidecars)

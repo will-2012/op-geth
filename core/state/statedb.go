@@ -669,6 +669,7 @@ func (s *StateDB) getDeletedStateObject(addr common.Address) *stateObject {
 	if s.snap != nil {
 		start := time.Now()
 		acc, err := s.snap.Account(crypto.HashData(s.hasher, addr.Bytes()))
+		snapReadTimer.UpdateSince(start)
 		if metrics.EnabledExpensive {
 			s.SnapshotAccountReads += time.Since(start)
 		}
@@ -994,7 +995,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		addressesToPrefetch = append(addressesToPrefetch, common.CopyBytes(addr[:])) // Copy needed for closure
 	}
 	if s.prefetcher != nil && len(addressesToPrefetch) > 0 {
-		s.prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch)
+		// s.prefetcher.prefetch(common.Hash{}, s.originalRoot, common.Address{}, addressesToPrefetch)
 	}
 	// Invalidate journal because reverting across transactions is not allowed.
 	s.clearJournalAndRefund()
@@ -1004,6 +1005,9 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 // It is called in between transactions to get the root hash that
 // goes into transaction receipts.
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
+	start := time.Now()
+	defer func() { intermediateRootTimer.UpdateSince(start) }()
+
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 	s.AccountsIntermediateRoot()
@@ -1011,6 +1015,8 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 }
 
 func (s *StateDB) AccountsIntermediateRoot() {
+	// TODO:
+
 	tasks := make(chan func())
 	finishCh := make(chan struct{})
 	defer close(finishCh)
@@ -1379,7 +1385,7 @@ func (s *StateDB) Commit(block uint64, deleteEmptyObjects bool) (common.Hash, er
 			storageUpdatedMeter.Mark(int64(s.StorageUpdated))
 			accountDeletedMeter.Mark(int64(s.AccountDeleted))
 			storageDeletedMeter.Mark(int64(s.StorageDeleted))
-			accountTrieUpdatedMeter.Mark(int64(accountTrieNodesUpdated))
+			accountTrieUpdatedMeter.Mark(int64(accountTrieNodesUpdated)) // TODO:
 			accountTrieDeletedMeter.Mark(int64(accountTrieNodesDeleted))
 			//storageTriesUpdatedMeter.Mark(int64(storageTrieNodesUpdated))
 			//storageTriesDeletedMeter.Mark(int64(storageTrieNodesDeleted))
