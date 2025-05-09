@@ -39,6 +39,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
+	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -366,23 +367,24 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 		engine:              engine,
 		vmConfig:            vmConfig,
 	}
+	var err error
+	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
+	if err != nil {
+		return nil, err
+	}
 	bc.flushInterval.Store(int64(cacheConfig.TrieTimeLimit))
 	bc.forker = NewForkChoice(bc, shouldPreserve)
 	bc.stateCache = state.NewDatabaseWithNodeDB(bc.db, bc.triedb)
 	bc.validator = NewBlockValidator(chainConfig, bc, engine)
 	bc.prefetcher = newStatePrefetcher(chainConfig, bc, engine)
-	bc.processor = NewStateProcessor(chainConfig, bc, engine)
+	bc.processor = NewStateProcessor(chainConfig, bc, engine, bc.hc)
 
-	err := proofKeeper.Start(bc, db)
+	err = proofKeeper.Start(bc, db)
 	if err != nil {
 		return nil, err
 	}
 	bc.proofKeeper = proofKeeper
 
-	bc.hc, err = NewHeaderChain(db, chainConfig, engine, bc.insertStopped)
-	if err != nil {
-		return nil, err
-	}
 	bc.genesisBlock = bc.GetBlockByNumber(0)
 	if bc.genesisBlock == nil {
 		return nil, ErrNoGenesis
@@ -1968,7 +1970,16 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			}
 
 			// Enable prefetching to pull in trie node paths while processing transactions
-			statedb.StartPrefetcher("chain")
+			var witness *stateless.Witness
+			// if bc.vmConfig.StatelessSelfValidation {
+			{ // todo: tmp force enable witness generator
+				witness, err = stateless.NewWitness(bc, block)
+				if err != nil {
+					return it.index, err
+				}
+				log.Info("succeed to enable witness generator", "hash", block.Hash(), "number", block.NumberU64(), "root", block.Root())
+			}
+			statedb.StartPrefetcher("chain", witness)
 			activeState = statedb
 
 			// If we have a followup block, run that against the current state to pre-cache
@@ -1993,6 +2004,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			// Process block using the parent state as reference point
 			pstart = time.Now()
 			receipts, logs, usedGas, err = bc.processor.Process(block, statedb, bc.vmConfig)
+			log.Info("print normal execute receipt", "block", block, "receipt", receipts, "vm_config", bc.vmConfig)
 			if err != nil {
 				bc.reportBlock(block, receipts, err)
 				followupInterrupt.Store(true)
@@ -2014,13 +2026,19 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 				return it.index, err
 			}
 			go func() {
-				asyncValidateStateCh <- bc.validator.ValidateState(block, statedb, receipts, usedGas, true)
+				asyncValidateStateCh <- bc.validator.ValidateState(block, statedb, receipts, usedGas, true, false)
 			}()
 		} else {
-			if err := bc.validator.ValidateState(block, statedb, receipts, usedGas, false); err != nil {
+			if err := bc.validator.ValidateState(block, statedb, receipts, usedGas, false, false); err != nil {
 				bc.reportBlock(block, receipts, err)
 				followupInterrupt.Store(true)
 				return it.index, err
+			}
+		}
+		if witness := statedb.Witness(); witness != nil {
+			if err = bc.validator.ValidateWitness(bc, witness, block.ReceiptHash(), block.Root()); err != nil {
+				bc.reportBlock(block, receipts, err)
+				return it.index, fmt.Errorf("cross verification failed: %v", err)
 			}
 		}
 

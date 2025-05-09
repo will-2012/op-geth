@@ -40,6 +40,9 @@ type triePrefetcher struct {
 	fetches  map[string]Trie        // Partially or fully fetched tries. Only populated for inactive copies.
 	fetchers map[string]*subfetcher // Subfetchers for each trie
 
+	// TODO: fix me
+	noreads bool // Whether to ignore state-read-only prefetch requests
+
 	deliveryMissMeter metrics.Meter
 	accountLoadMeter  metrics.Meter
 	accountDupMeter   metrics.Meter
@@ -51,12 +54,13 @@ type triePrefetcher struct {
 	storageWasteMeter metrics.Meter
 }
 
-func newTriePrefetcher(db Database, root common.Hash, namespace string) *triePrefetcher {
+func newTriePrefetcher(db Database, root common.Hash, namespace string, noreads bool) *triePrefetcher {
 	prefix := triePrefetchMetricsPrefix + namespace
 	p := &triePrefetcher{
 		db:       db,
 		root:     root,
 		fetchers: make(map[string]*subfetcher), // Active prefetchers use the fetchers map
+		noreads:  noreads,
 
 		deliveryMissMeter: metrics.GetOrRegisterMeter(prefix+"/deliverymiss", nil),
 		accountLoadMeter:  metrics.GetOrRegisterMeter(prefix+"/account/load", nil),
@@ -177,6 +181,7 @@ func (p *triePrefetcher) trie(owner common.Hash, root common.Hash) Trie {
 	}
 	// Interrupt the prefetcher if it's by any chance still running and return
 	// a copy of any pre-loaded trie.
+	// TODO: wait??
 	fetcher.abort() // safe to do multiple times
 
 	trie := fetcher.peek()
@@ -264,6 +269,9 @@ func (sf *subfetcher) schedule(keys [][]byte) {
 // peek tries to retrieve a deep copy of the fetcher's trie in whatever form it
 // is currently.
 func (sf *subfetcher) peek() Trie {
+	defer func() {
+		log.Info("debug succeed to peek tree", "owner", sf.owner)
+	}()
 	ch := make(chan Trie)
 	select {
 	case sf.copy <- ch:
@@ -325,17 +333,34 @@ func (sf *subfetcher) loop() {
 			sf.lock.Unlock()
 
 			// Prefetch any tasks until the loop is interrupted
-			for i, task := range tasks {
+			for _, task := range tasks {
 				select {
 				case <-sf.stop:
 					// If termination is requested, add any leftover back and return
-					sf.lock.Lock()
-					sf.tasks = append(sf.tasks, tasks[i:]...)
-					sf.lock.Unlock()
+					// sf.lock.Lock()
+					// sf.tasks = append(sf.tasks, tasks[i:]...)
+					// sf.lock.Unlock()
+					for _, t := range tasks {
+						if len(t) == common.AddressLength {
+							sf.trie.GetAccount(common.BytesToAddress(t))
+						} else {
+							sf.trie.GetStorage(sf.addr, t)
+						}
+						sf.seen[string(t)] = struct{}{}
+					}
 					return
 
 				case ch := <-sf.copy:
 					// Somebody wants a copy of the current trie, grant them
+					// TODO: force prefetch all tasks
+					for _, t := range tasks {
+						if len(t) == common.AddressLength {
+							sf.trie.GetAccount(common.BytesToAddress(t))
+						} else {
+							sf.trie.GetStorage(sf.addr, t)
+						}
+						sf.seen[string(t)] = struct{}{}
+					}
 					ch <- sf.db.CopyTrie(sf.trie)
 
 				default:
@@ -355,9 +380,34 @@ func (sf *subfetcher) loop() {
 
 		case ch := <-sf.copy:
 			// Somebody wants a copy of the current trie, grant them
+			// TODO: force prefetch all tasks
+			sf.lock.Lock()
+			tasks := sf.tasks
+			sf.tasks = nil
+			sf.lock.Unlock()
+			for _, t := range tasks {
+				if len(t) == common.AddressLength {
+					sf.trie.GetAccount(common.BytesToAddress(t))
+				} else {
+					sf.trie.GetStorage(sf.addr, t)
+				}
+				sf.seen[string(t)] = struct{}{}
+			}
 			ch <- sf.db.CopyTrie(sf.trie)
 
 		case <-sf.stop:
+			sf.lock.Lock()
+			tasks := sf.tasks
+			sf.tasks = nil
+			sf.lock.Unlock()
+			for _, t := range tasks {
+				if len(t) == common.AddressLength {
+					sf.trie.GetAccount(common.BytesToAddress(t))
+				} else {
+					sf.trie.GetStorage(sf.addr, t)
+				}
+				sf.seen[string(t)] = struct{}{}
+			}
 			// Termination is requested, abort and leave remaining tasks
 			return
 		}

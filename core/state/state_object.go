@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -177,6 +178,26 @@ func (s *stateObject) getTrie() (Trie, error) {
 	return s.trie, nil
 }
 
+// getPrefetchedTrie returns the associated trie, as populated by the prefetcher
+// if it's available.
+//
+// Note, opposed to getTrie, this method will *NOT* blindly cache the resulting
+// trie in the state object. The caller might want to do that, but it's cleaner
+// to break the hidden interdependency between retrieving tries from the db or
+// from the prefetcher.
+func (s *stateObject) getPrefetchedTrie() Trie {
+	defer func() {
+		log.Info("debug get prefetched trie", "owner", s.address)
+	}()
+	// If there's nothing to meaningfully return, let the user figure it out by
+	// pulling the trie from disk.
+	if s.data.Root == types.EmptyRootHash || s.db.prefetcher == nil {
+		return nil
+	}
+	// Attempt to retrieve the trie from the prefetcher
+	return s.db.prefetcher.trie(s.addrHash, s.data.Root)
+}
+
 // GetState retrieves a value from the account storage trie.
 func (s *stateObject) GetState(key common.Hash) common.Hash {
 	// If we have a dirty value for this state entry, return it
@@ -244,6 +265,10 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		}
 		value.SetBytes(val)
 	}
+	// Schedule the resolved storage slots for prefetching if it's enabled.
+	if s.db.prefetcher != nil && s.data.Root != types.EmptyRootHash {
+		s.db.prefetcher.prefetch(s.addrHash, s.origin.Root, s.address, [][]byte{key[:]})
+	}
 	s.originStorage[key] = value
 	return value
 }
@@ -292,6 +317,7 @@ func (s *stateObject) finalise(prefetch bool) {
 		s.dirtyCodeHash = nil
 	}
 	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != types.EmptyRootHash {
+		// note here
 		s.db.prefetcher.prefetch(s.addrHash, s.data.Root, s.address, slotsToPrefetch)
 	}
 	if len(s.dirtyStorage) > 0 {
@@ -348,10 +374,20 @@ func (s *stateObject) updateTrie() (Trie, error) {
 		origin  map[common.Hash][]byte
 		hasher  = crypto.NewKeccakState()
 	)
-	tr, err := s.getTrie()
-	if err != nil {
-		s.db.setError(err)
-		return nil, err
+	// Retrieve a pretecher populated trie, or fall back to the database. This will
+	// block until all prefetch tasks are done, which are needed for witnesses even
+	// for unmodified state objects.
+	tr := s.getPrefetchedTrie()
+	if tr != nil {
+		// Prefetcher returned a live trie, swap it out for the current one
+		s.trie = tr
+	} else {
+		var err error
+		tr, err = s.getTrie()
+		if err != nil {
+			s.db.setError(err)
+			return nil, err
+		}
 	}
 	// Insert all the pending storage updates into the trie
 	usedStorage := make([][]byte, 0, len(s.pendingStorage))
