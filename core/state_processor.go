@@ -22,7 +22,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -44,16 +43,14 @@ var processTxTimer = metrics.NewRegisteredTimer("process/tx/time", nil)
 type StateProcessor struct {
 	config *params.ChainConfig // Chain configuration options
 	bc     *BlockChain         // Canonical block chain
-	engine consensus.Engine    // Consensus engine used for block rewards
 	chain  *HeaderChain        // Canonical header chain
 }
 
 // NewStateProcessor initialises a new StateProcessor.
-func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, engine consensus.Engine, chain *HeaderChain) *StateProcessor {
+func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, chain *HeaderChain) *StateProcessor {
 	return &StateProcessor{
 		config: config,
 		bc:     bc,
-		engine: engine,
 		chain:  chain,
 	}
 }
@@ -139,7 +136,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		return nil, nil, 0, errors.New("withdrawals before shanghai")
 	}
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), withdrawals)
+	p.chain.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), withdrawals)
 	if p.bc.enableTxDAG {
 		defer func() {
 			statedb.MVStates().Stop()

@@ -19,7 +19,6 @@ package core
 import (
 	"sync/atomic"
 
-	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -32,15 +31,13 @@ import (
 type statePrefetcher struct {
 	config *params.ChainConfig // Chain configuration options
 	bc     *BlockChain         // Canonical block chain
-	engine consensus.Engine    // Consensus engine used for block rewards
 }
 
 // newStatePrefetcher initialises a new statePrefetcher.
-func newStatePrefetcher(config *params.ChainConfig, bc *BlockChain, engine consensus.Engine) *statePrefetcher {
+func newStatePrefetcher(config *params.ChainConfig, bc *BlockChain) *statePrefetcher {
 	return &statePrefetcher{
 		config: config,
 		bc:     bc,
-		engine: engine,
 	}
 }
 

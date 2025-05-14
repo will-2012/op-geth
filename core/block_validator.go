@@ -35,14 +35,12 @@ import (
 type BlockValidator struct {
 	config *params.ChainConfig // Chain configuration options
 	bc     *BlockChain         // Canonical block chain
-	engine consensus.Engine    // Consensus engine used for validating
 }
 
 // NewBlockValidator returns a new block validator which is safe for re-use
-func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain, engine consensus.Engine) *BlockValidator {
+func NewBlockValidator(config *params.ChainConfig, blockchain *BlockChain) *BlockValidator {
 	validator := &BlockValidator{
 		config: config,
-		engine: engine,
 		bc:     blockchain,
 	}
 	return validator
@@ -60,7 +58,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	// Header validity is known at this point. Here we verify that uncles, transactions
 	// and withdrawals given in the block body match the header.
 	header := block.Header()
-	if err := v.engine.VerifyUncles(v.bc, block); err != nil {
+	if err := v.bc.engine.VerifyUncles(v.bc, block); err != nil {
 		return err
 	}
 	if hash := types.CalcUncleHash(block.Uncles()); hash != header.UncleHash {

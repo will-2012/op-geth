@@ -1016,7 +1016,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		// the commit-phase will be a lot faster
 		addressesToPrefetch = append(addressesToPrefetch, addr) // Copy needed for closure
 	}
-	log.Info("debug witness,finalise account number",
+	log.Info("debug witness, finalise account number",
 		"journal_number", len(s.journal.dirties),
 		"stateobject_number", len(s.stateObjects),
 		"diry_number", len(s.stateObjectsDirty),
