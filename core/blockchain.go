@@ -2048,7 +2048,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			context.Root = common.Hash{}
 			context.ReceiptHash = common.Hash{}
 
-			task := types.NewBlockWithHeader(context).WithBodyV2(*block.Body())
+			task := types.NewBlockWithHeader(context).WithBody(*block.Body())
 
 			// Run the stateless self-cross-validation
 			crossStateRoot, crossReceiptRoot, err := ExecuteStateless(bc.chainConfig, bc, bc.vmConfig, task, witness)
