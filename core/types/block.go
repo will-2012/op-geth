@@ -20,12 +20,14 @@ package types
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/holiman/uint256"
 	"io"
 	"math/big"
 	"reflect"
+	"slices"
 	"sync/atomic"
 	"time"
+
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -232,6 +234,12 @@ type Block struct {
 	uncles       []*Header
 	transactions Transactions
 	withdrawals  Withdrawals
+
+	// witness is not an encoded part of the block body.
+	// It is held in Block in order for easy relaying to the places
+	// that process it.
+	// TODO: check it
+	//witness *ExecutionWitness
 
 	// caches
 	hash atomic.Value
@@ -491,17 +499,18 @@ func (b *Block) WithSeal(header *Header) *Block {
 	}
 }
 
-// WithBody returns a copy of the block with the given transaction and uncle contents.
-func (b *Block) WithBody(transactions []*Transaction, uncles []*Header) *Block {
+// WithBody returns a new block with the original header and a deep copy of the
+// provided body.
+func (b *Block) WithBody(body Body) *Block {
 	block := &Block{
 		header:       b.header,
-		transactions: make([]*Transaction, len(transactions)),
-		uncles:       make([]*Header, len(uncles)),
-		withdrawals:  b.withdrawals,
+		transactions: slices.Clone(body.Transactions),
+		uncles:       make([]*Header, len(body.Uncles)),
+		withdrawals:  slices.Clone(body.Withdrawals),
+		//witness:      b.witness,
 	}
-	copy(block.transactions, transactions)
-	for i := range uncles {
-		block.uncles[i] = CopyHeader(uncles[i])
+	for i := range body.Uncles {
+		block.uncles[i] = CopyHeader(body.Uncles[i])
 	}
 	return block
 }
