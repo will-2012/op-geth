@@ -463,8 +463,7 @@ func (api *DebugAPI) ExecutionWitness(ctx context.Context, blockNrOrHash rpc.Blo
 }
 
 func generateWitness(blockchain *core.BlockChain, block *types.Block) (*stateless.Witness, error) {
-	// TODO: polish it
-	witness, err := stateless.NewWitness(blockchain, block)
+	witness, err := stateless.NewWitness(block.Header(), blockchain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create witness: %w", err)
 	}

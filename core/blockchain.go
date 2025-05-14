@@ -1977,15 +1977,15 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			// useless due to the intermediate root hashing after each transaction.
 			if bc.chainConfig.IsByzantium(block.Number()) {
 				{ // todo: tmp force enable witness generator for testing, will remove it later.
-					witness, err = stateless.NewWitness(bc, block)
+					witness, err = stateless.NewWitness(block.Header(), bc)
 					if err != nil {
 						return it.index, err
 					}
 					log.Info("debug witness, succeed to enable witness generator",
 						"hash", block.Hash(), "number", block.NumberU64(), "root", block.Root())
 				}
+				statedb.StartPrefetcher("chain", witness)
 			}
-			statedb.StartPrefetcher("chain", witness)
 			activeState = statedb
 
 			// If we have a followup block, run that against the current state to pre-cache
@@ -2044,10 +2044,25 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 
 		// todo: tmp force enable witness generator for testing, will remove it later.
 		if witness := statedb.Witness(); witness != nil {
-			if err = bc.validator.ValidateWitness(bc, witness, block.ReceiptHash(), block.Root()); err != nil {
-				bc.reportBlock(block, receipts, err)
-				return it.index, fmt.Errorf("debug witness, cross verification failed: %v", err)
+			// Remove critical computed fields from the block to force true recalculation
+			context := block.Header()
+			context.Root = common.Hash{}
+			context.ReceiptHash = common.Hash{}
+
+			task := types.NewBlockWithHeader(context).WithBodyV2(*block.Body())
+
+			// Run the stateless self-cross-validation
+			crossStateRoot, crossReceiptRoot, err := ExecuteStateless(bc.chainConfig, bc, bc.vmConfig, task, witness)
+			if err != nil {
+				return it.index, fmt.Errorf("stateless self-validation failed: %v", err)
 			}
+			if crossStateRoot != block.Root() {
+				return it.index, fmt.Errorf("stateless self-validation root mismatch (cross: %x local: %x)", crossStateRoot, block.Root())
+			}
+			if crossReceiptRoot != block.ReceiptHash() {
+				return it.index, fmt.Errorf("stateless self-validation receipt root mismatch (cross: %x local: %x)", crossReceiptRoot, block.ReceiptHash())
+			}
+
 		}
 
 		vtime := time.Since(vstart)
