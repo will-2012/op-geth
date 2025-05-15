@@ -36,7 +36,7 @@ type Config struct {
 	OptimismPrecompileOverrides PrecompileOverrides // Precompile overrides for Optimism
 	EnableOpcodeOptimizations   bool                // Enable opcode optimization
 
-	// TODO: check it
+	// TODO: add outter config
 	StatelessSelfValidation bool // Generate execution witnesses and self-check against them (testing purpose)
 }
 

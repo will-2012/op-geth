@@ -1975,7 +1975,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			// while processing transactions. Before Byzantium the prefetcher is mostly
 			// useless due to the intermediate root hashing after each transaction.
 			if bc.chainConfig.IsByzantium(block.Number()) {
-				{ // todo: tmp force enable witness generator for testing, will remove it later.
+				if bc.vmConfig.StatelessSelfValidation { // todo: tmp force enable witness generator for testing, will remove it later.
 					witness, err = stateless.NewWitness(block.Header(), bc)
 					if err != nil {
 						return it.index, err
@@ -2042,7 +2042,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 		}
 
 		// todo: tmp force enable witness generator for testing, will remove it later.
-		if witness := statedb.Witness(); witness != nil {
+		if witness := statedb.Witness(); witness != nil && bc.vmConfig.StatelessSelfValidation {
 			// Remove critical computed fields from the block to force true recalculation
 			context := block.Header()
 			context.Root = common.Hash{}
