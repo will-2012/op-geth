@@ -235,12 +235,6 @@ type Block struct {
 	transactions Transactions
 	withdrawals  Withdrawals
 
-	// witness is not an encoded part of the block body.
-	// It is held in Block in order for easy relaying to the places
-	// that process it.
-	// TODO: check it
-	//witness *ExecutionWitness
-
 	// caches
 	hash atomic.Value
 	size atomic.Value
@@ -507,7 +501,6 @@ func (b *Block) WithBody(body Body) *Block {
 		transactions: slices.Clone(body.Transactions),
 		uncles:       make([]*Header, len(body.Uncles)),
 		withdrawals:  slices.Clone(body.Withdrawals),
-		//witness:      b.witness,
 	}
 	for i := range body.Uncles {
 		block.uncles[i] = CopyHeader(body.Uncles[i])

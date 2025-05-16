@@ -305,9 +305,6 @@ type BlockChain struct {
 	processor  Processor // Block transaction processor interface
 	forker     *ForkChoice
 	vmConfig   vm.Config
-
-	// parallel EVM related
-	enableTxDAG bool
 }
 
 // NewBlockChain returns a fully initialised block chain using information
@@ -377,7 +374,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	bc.stateCache = state.NewDatabaseWithNodeDB(bc.db, bc.triedb)
 	bc.validator = NewBlockValidator(chainConfig, bc)
 	bc.prefetcher = newStatePrefetcher(chainConfig, bc)
-	bc.processor = NewStateProcessor(chainConfig, bc, bc.hc)
+	bc.processor = NewStateProcessor(chainConfig, bc.hc)
 
 	err = proofKeeper.Start(bc, db)
 	if err != nil {
@@ -1975,7 +1972,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			// while processing transactions. Before Byzantium the prefetcher is mostly
 			// useless due to the intermediate root hashing after each transaction.
 			if bc.chainConfig.IsByzantium(block.Number()) {
-				if bc.vmConfig.StatelessSelfValidation { // todo: tmp force enable witness generator for testing, will remove it later.
+				if bc.vmConfig.EnableStatelessSelfValidation {
 					witness, err = stateless.NewWitness(block.Header(), bc)
 					if err != nil {
 						return it.index, err
@@ -2041,8 +2038,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			}
 		}
 
-		// todo: tmp force enable witness generator for testing, will remove it later.
-		if witness := statedb.Witness(); witness != nil && bc.vmConfig.StatelessSelfValidation {
+		if witness := statedb.Witness(); witness != nil && bc.vmConfig.EnableStatelessSelfValidation {
 			// Remove critical computed fields from the block to force true recalculation
 			context := block.Header()
 			context.Root = common.Hash{}
@@ -2051,7 +2047,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			task := types.NewBlockWithHeader(context).WithBody(*block.Body())
 
 			// Run the stateless self-cross-validation
-			crossStateRoot, crossReceiptRoot, err := ExecuteStateless(bc.chainConfig, bc, bc.vmConfig, task, witness)
+			crossStateRoot, crossReceiptRoot, err := ExecuteStateless(bc.chainConfig, bc.vmConfig, task, witness)
 			if err != nil {
 				return it.index, fmt.Errorf("stateless self-validation failed: %v", err)
 			}
@@ -2868,10 +2864,10 @@ func (bc *BlockChain) HeaderChainForceSetHead(headNumber uint64) {
 }
 
 func (bc *BlockChain) TxDAGEnabledWhenMine() bool {
-	return bc.enableTxDAG
+	return bc.vmConfig.EnableTxDAG
 }
 
 func (bc *BlockChain) SetupTxDAGGeneration() {
 	log.Info("node enable TxDAG feature")
-	bc.enableTxDAG = true
+	bc.vmConfig.EnableTxDAG = true
 }

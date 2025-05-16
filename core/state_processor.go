@@ -42,15 +42,13 @@ var processTxTimer = metrics.NewRegisteredTimer("process/tx/time", nil)
 // StateProcessor implements Processor.
 type StateProcessor struct {
 	config *params.ChainConfig // Chain configuration options
-	bc     *BlockChain         // Canonical block chain
 	chain  *HeaderChain        // Canonical header chain
 }
 
 // NewStateProcessor initialises a new StateProcessor.
-func NewStateProcessor(config *params.ChainConfig, bc *BlockChain, chain *HeaderChain) *StateProcessor {
+func NewStateProcessor(config *params.ChainConfig, chain *HeaderChain) *StateProcessor {
 	return &StateProcessor{
 		config: config,
-		bc:     bc,
 		chain:  chain,
 	}
 }
@@ -91,7 +89,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		ProcessBeaconBlockRoot(*beaconRoot, vmenv, statedb)
 	}
 	statedb.MarkFullProcessed()
-	if p.bc.enableTxDAG {
+	if cfg.EnableTxDAG {
 		feeReceivers := []common.Address{context.Coinbase, params.OptimismBaseFeeRecipient, params.OptimismL1FeeRecipient}
 		statedb.ResetMVStates(len(block.Transactions()), feeReceivers).EnableAsyncGen()
 	}
@@ -136,8 +134,8 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		return nil, nil, 0, errors.New("withdrawals before shanghai")
 	}
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	p.chain.engine.Finalize(p.bc, header, statedb, block.Transactions(), block.Uncles(), withdrawals)
-	if p.bc.enableTxDAG {
+	p.chain.engine.Finalize(p.chain, header, statedb, block.Transactions(), block.Uncles(), withdrawals)
+	if cfg.EnableTxDAG {
 		defer func() {
 			statedb.MVStates().Stop()
 		}()
