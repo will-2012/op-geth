@@ -50,6 +50,7 @@ const (
 	AccessListTxType = 0x01
 	DynamicFeeTxType = 0x02
 	BlobTxType       = 0x03
+	SetCodeTxType    = 0x04
 )
 
 // Transaction is an Ethereum transaction.
@@ -498,6 +499,15 @@ func (tx *Transaction) BlobTxSidecar() *BlobTxSidecar {
 		return blobtx.Sidecar
 	}
 	return nil
+}
+
+// SetCodeAuthorizations returns the authorizations list of the transaction.
+func (tx *Transaction) SetCodeAuthorizations() []SetCodeAuthorization {
+	setcodetx, ok := tx.inner.(*SetCodeTx)
+	if !ok {
+		return nil
+	}
+	return setcodetx.AuthList
 }
 
 // SetBlobTxSidecar sets the sidecar of a transaction.
