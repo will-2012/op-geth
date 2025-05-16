@@ -18,14 +18,14 @@ require (
 	github.com/cloudflare/cloudflare-go v0.79.0
 	github.com/cockroachdb/pebble v0.0.0-20230928194634-aa077af62593
 	github.com/cometbft/cometbft v0.37.2
-	github.com/consensys/gnark-crypto v0.12.1
+	github.com/consensys/gnark-crypto v0.13.0
 	github.com/crate-crypto/go-ipa v0.0.0-20231025140028-3c0104f4b233
-	github.com/crate-crypto/go-kzg-4844 v0.7.0
+	github.com/crate-crypto/go-kzg-4844 v1.1.0
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/deckarep/golang-set/v2 v2.1.0
 	github.com/dop251/goja v0.0.0-20230806174421-c933cf95e127
 	github.com/ethereum-optimism/superchain-registry/superchain v0.0.0-20240603085035-9c8f6081266e
-	github.com/ethereum/c-kzg-4844 v0.4.0
+	github.com/ethereum/c-kzg-4844 v1.0.0
 	github.com/fatih/color v1.15.0
 	github.com/fjl/gencodec v0.0.0-20230517082657-f9840df7b83e
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
@@ -158,7 +158,7 @@ require (
 	github.com/prysmaticlabs/prysm v0.0.0-20220124113610-e26cde5e091b // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect
-	github.com/rogpeppe/go-internal v1.10.0 // indirect
+	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
