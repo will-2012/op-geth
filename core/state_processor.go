@@ -110,6 +110,7 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		if metrics.EnabledExpensive {
 			processTxTimer.UpdateSince(start)
 		}
+		log.Info("debug witness, debug gas fee", "block_number", block.NumberU64(), "i", i, "tx_hash", tx.Hash().Hex(), "tx_gas", tx.Gas(), "tx_nonce", tx.Nonce(), "receipt", receipt, "gas_used", *usedGas)
 	}
 
 	// TODO: remove it later
