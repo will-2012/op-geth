@@ -2049,6 +2049,41 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			// Run the stateless self-cross-validation
 			crossStateRoot, crossReceiptRoot, err := ExecuteStateless(bc.chainConfig, bc.vmConfig, task, witness)
 			if err != nil {
+				log.Info("debug witness, stateless self-validation failed", "actual_witness", witness, "block", block, "err", err)
+
+				{
+					expected_witness, err := stateless.NewWitness(block.Header(), bc)
+					if err != nil {
+						log.Warn("debug witness, failed to create expected witness", "err", err)
+						return it.index, fmt.Errorf("failed to create witness: %w", err)
+					}
+					parentHeader := expected_witness.Headers[0]
+					statedb, err := bc.StateAt(parentHeader.Root)
+					if err != nil {
+						log.Warn("debug witness, failed to retrieve parent state", "err", err)
+						return it.index, fmt.Errorf("failed to retrieve parent state: %w", err)
+					}
+
+					statedb.StartPrefetcher("debug_execution_witness", witness)
+					defer statedb.StopPrefetcher()
+
+					receipts, _, usedGas, err := bc.Processor().Process(block, statedb, *bc.GetVMConfig())
+					if err != nil {
+						log.Warn("debug witness, failed to process block", "err", err)
+						return it.index, fmt.Errorf("failed to process block %d: %w", block.Number(), err)
+					}
+
+					if err := bc.Validator().ValidateState(block, statedb, receipts, usedGas, false, false); err != nil {
+						log.Warn("debug witness, failed to validate block", "err", err)
+						return it.index, fmt.Errorf("failed to validate block %d: %w", block.Number(), err)
+					}
+					log.Info("debug witness, stateless self-validation failed",
+						"actual_witness", witness,
+						"expected_witness", expected_witness,
+						"block", block,
+						"err", err)
+				}
+
 				return it.index, fmt.Errorf("stateless self-validation failed: %v", err)
 			}
 			if crossStateRoot != block.Root() {

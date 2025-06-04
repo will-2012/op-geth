@@ -18,6 +18,7 @@ package stateless
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"sync"
@@ -119,4 +120,8 @@ func (w *Witness) Copy() *Witness {
 // sanitize it and fail before that).
 func (w *Witness) Root() common.Hash {
 	return w.Headers[0].Root
+}
+
+func (w *Witness) String() string {
+	return fmt.Sprintf("Witness{Headers_len: %v, Codes_len: %v, State_len: %v}", len(w.Headers), len(w.Codes), len(w.State))
 }

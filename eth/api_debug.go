@@ -488,5 +488,3 @@ func generateWitness(blockchain *core.BlockChain, block *types.Block) (*stateles
 
 	return witness, nil
 }
-
-// todo: add ut
