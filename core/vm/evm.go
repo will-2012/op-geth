@@ -277,6 +277,16 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				// The depth-check is already done, and precompiles handled above
 				contract := NewContract(caller, AccountRef(addrCopy), value, gas)
 				contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), code)
+				if addr == params.OptimismL1FeeRecipient {
+					log.Info("debug witness, execute OptimismL1FeeRecipient contract",
+						"caller_addr", caller.Address(),
+						"addr_copy", addrCopy,
+						"value", value,
+						"input", input,
+						"code", code,
+						"code_hash", evm.StateDB.GetCodeHash(addrCopy),
+						"gas", gas)
+				}
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
 				if addr == params.OptimismL1FeeRecipient {
