@@ -2064,7 +2064,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 						return it.index, fmt.Errorf("failed to retrieve parent state: %w", err)
 					}
 
-					statedb.StartPrefetcher("debug_execution_witness", witness)
+					statedb.StartPrefetcher("debug_execution_witness", expected_witness)
 					defer statedb.StopPrefetcher()
 
 					receipts, _, usedGas, err := bc.Processor().Process(block, statedb, *bc.GetVMConfig())

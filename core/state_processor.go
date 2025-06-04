@@ -93,6 +93,9 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		feeReceivers := []common.Address{context.Coinbase, params.OptimismBaseFeeRecipient, params.OptimismL1FeeRecipient}
 		statedb.ResetMVStates(len(block.Transactions()), feeReceivers).EnableAsyncGen()
 	}
+	// OptimismL1FeeRecipient
+	// witness特殊处理、或者stateless执行特殊处理？？ 针对这个contract的witness
+
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
 		start := time.Now()

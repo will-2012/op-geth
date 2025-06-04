@@ -603,6 +603,7 @@ func (st *StateTransition) innerTransitionDb() (*ExecutionResult, error) {
 				return nil, fmt.Errorf("optimism l1 cost overflows U256: %d", l1Cost)
 			}
 			st.state.AddBalance(params.OptimismL1FeeRecipient, amtU256)
+
 		}
 	}
 
