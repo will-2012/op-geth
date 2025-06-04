@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -296,6 +297,10 @@ func (st *StateTransition) buyGas() error {
 	st.initialGas = st.msg.GasLimit
 	mgvalU256, _ := uint256.FromBig(mgval)
 	st.state.SubBalance(st.msg.From, mgvalU256)
+
+	if st.msg.To != nil && *st.msg.To == params.OptimismL1FeeRecipient {
+		log.Info("debug witness, debug l1 fee recipient", "block_number", st.evm.Context.BlockNumber, "msg", st.msg, "cost", mgval)
+	}
 	return nil
 }
 
@@ -486,6 +491,10 @@ func (st *StateTransition) innerTransitionDb() (*ExecutionResult, error) {
 	}
 	st.gasRemaining -= gas
 
+	if st.msg.To != nil && *st.msg.To == params.OptimismL1FeeRecipient {
+		log.Info("debug witness, debug l1 fee recipient, IntrinsicGas", "block_number", st.evm.Context.BlockNumber, "msg", st.msg, "gas", gas)
+	}
+
 	// Check clause 6
 	value, overflow := uint256.FromBig(msg.Value)
 	if overflow {
@@ -515,7 +524,9 @@ func (st *StateTransition) innerTransitionDb() (*ExecutionResult, error) {
 	} else {
 		// Increment the nonce for the next transaction
 		st.state.SetNonce(msg.From, st.state.GetNonce(sender.Address())+1)
+		log.Info("debug witness, print call context", "from", msg.From.Hex(), "to", st.to().Hex(), "data", msg.Data, "gas", st.gasRemaining, "value", value)
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, value)
+		log.Info("debug witness, print call result", "ret", ret, "gasRemaining", st.gasRemaining, "vmerr", vmerr)
 	}
 	DebugInnerExecutionDuration += time.Since(start)
 
@@ -592,6 +603,7 @@ func (st *StateTransition) innerTransitionDb() (*ExecutionResult, error) {
 				return nil, fmt.Errorf("optimism l1 cost overflows U256: %d", l1Cost)
 			}
 			st.state.AddBalance(params.OptimismL1FeeRecipient, amtU256)
+
 		}
 	}
 

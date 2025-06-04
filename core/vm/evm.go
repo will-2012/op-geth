@@ -17,9 +17,11 @@
 package vm
 
 import (
-	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
 	"math/big"
 	"sync/atomic"
+
+	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/holiman/uint256"
 
@@ -250,6 +252,9 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
 		code := evm.StateDB.GetCode(addr)
+		if witness := evm.StateDB.Witness(); witness != nil {
+			witness.AddCode(code)
+		}
 		if len(code) == 0 {
 			ret, err = nil, nil // gas is unchanged
 		} else {
@@ -264,13 +269,30 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
 			} else {
+				if addr == params.OptimismL1FeeRecipient {
+					log.Info("debug witness, debug l1 fee recipient, before interpreter run", "contract_gas", gas)
+				}
 				addrCopy := addr
 				// If the account has no code, we can abort here
 				// The depth-check is already done, and precompiles handled above
 				contract := NewContract(caller, AccountRef(addrCopy), value, gas)
 				contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), code)
+				if addr == params.OptimismL1FeeRecipient {
+					log.Info("debug witness, execute OptimismL1FeeRecipient contract",
+						"caller_addr", caller.Address(),
+						"addr_copy", addrCopy,
+						"value", value,
+						"input", input,
+						"code", code,
+						"code_hash", evm.StateDB.GetCodeHash(addrCopy),
+						"gas", gas)
+				}
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
+				if addr == params.OptimismL1FeeRecipient {
+					log.Info("debug witness, debug l1 fee recipient, after interpreter run", "contract_gas", gas, "err", err)
+				}
+
 			}
 		}
 	}
@@ -330,6 +352,9 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			code := evm.StateDB.GetCode(addrCopy)
 			codeHash := evm.StateDB.GetCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
+			if witness := evm.StateDB.Witness(); witness != nil {
+				witness.AddCode(code)
+			}
 			contract.SetCallCode(&addrCopy, codeHash, code)
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
@@ -339,6 +364,9 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 			// The contract is a scoped environment for this execution context only.
 			contract := NewContract(caller, AccountRef(caller.Address()), value, gas)
 			contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
+			if witness := evm.StateDB.Witness(); witness != nil {
+				witness.AddCode(evm.StateDB.GetCode(addrCopy))
+			}
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		}
@@ -388,6 +416,9 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			codeHash := evm.StateDB.GetCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			contract.SetCallCode(&addrCopy, codeHash, code)
+			if witness := evm.StateDB.Witness(); witness != nil {
+				witness.AddCode(code)
+			}
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		} else {
@@ -395,6 +426,9 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 			// Initialise a new contract and make initialise the delegate values
 			contract := NewContract(caller, AccountRef(caller.Address()), nil, gas).AsDelegate()
 			contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
+			if witness := evm.StateDB.Witness(); witness != nil {
+				witness.AddCode(evm.StateDB.GetCode(addrCopy))
+			}
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		}
@@ -453,6 +487,9 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			codeHash := evm.StateDB.GetCodeHash(addrCopy)
 			contract.optimized, code = tryGetOptimizedCode(evm, codeHash, code)
 			contract.SetCallCode(&addrCopy, codeHash, code)
+			if witness := evm.StateDB.Witness(); witness != nil {
+				witness.AddCode(code)
+			}
 			// When an error was returned by the EVM or when setting the creation code
 			// above we revert to the snapshot and consume any gas remaining. Additionally
 			// when we're in Homestead this also counts for code storage gas errors.
@@ -467,6 +504,9 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 			// The contract is a scoped environment for this execution context only.
 			contract := NewContract(caller, AccountRef(addrCopy), new(uint256.Int), gas)
 			contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), evm.StateDB.GetCode(addrCopy))
+			if witness := evm.StateDB.Witness(); witness != nil {
+				witness.AddCode(evm.StateDB.GetCode(addrCopy))
+			}
 			// When an error was returned by the EVM or when setting the creation code
 			// above we revert to the snapshot and consume any gas remaining. Additionally
 			// when we're in Homestead this also counts for code storage gas errors.
