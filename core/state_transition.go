@@ -491,6 +491,10 @@ func (st *StateTransition) innerTransitionDb() (*ExecutionResult, error) {
 	}
 	st.gasRemaining -= gas
 
+	if st.msg.To != nil && *st.msg.To == params.OptimismL1FeeRecipient {
+		log.Info("debug witness, debug l1 fee recipient, IntrinsicGas", "block_number", st.evm.Context.BlockNumber, "msg", st.msg, "gas", gas)
+	}
+
 	// Check clause 6
 	value, overflow := uint256.FromBig(msg.Value)
 	if overflow {

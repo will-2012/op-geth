@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/core/opcodeCompiler/compiler"
+	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/holiman/uint256"
 
@@ -268,6 +269,9 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
 			} else {
+				if addr == params.OptimismL1FeeRecipient {
+					log.Info("debug witness, debug l1 fee recipient, before interpreter run", "contract_gas", gas)
+				}
 				addrCopy := addr
 				// If the account has no code, we can abort here
 				// The depth-check is already done, and precompiles handled above
@@ -275,6 +279,10 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 				contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), code)
 				ret, err = evm.interpreter.Run(contract, input, false)
 				gas = contract.Gas
+				if addr == params.OptimismL1FeeRecipient {
+					log.Info("debug witness, debug l1 fee recipient, after interpreter run", "contract_gas", gas, "err", err)
+				}
+
 			}
 		}
 	}
