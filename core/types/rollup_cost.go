@@ -128,6 +128,7 @@ func NewL1CostFunc(config *params.ChainConfig, statedb StateGetter) L1CostFunc {
 			return newL1CostFuncBedrock(config, statedb, blockTime)
 		}
 
+		// TODO:
 		// Note: the various state variables below are not initialized from the DB until this
 		// point to allow deposit transactions from the block to be processed first by state
 		// transition.  This behavior is consensus critical!
@@ -172,8 +173,10 @@ func NewL1CostFunc(config *params.ChainConfig, statedb StateGetter) L1CostFunc {
 				log.Info("l1 cost func re-used for different L1 block", "oldTime", forBlock, "newTime", blockTime)
 			}
 			forBlock = blockTime
+			// TODO: check
 			cachedFunc = selectFunc(blockTime)
 		}
+		// todo: check
 		fee, _ := cachedFunc(rollupCostData)
 		return fee
 	}

@@ -297,6 +297,10 @@ func (st *StateTransition) buyGas() error {
 	st.initialGas = st.msg.GasLimit
 	mgvalU256, _ := uint256.FromBig(mgval)
 	st.state.SubBalance(st.msg.From, mgvalU256)
+
+	if st.msg.To != nil && *st.msg.To == params.OptimismL1FeeRecipient {
+		log.Info("debug witness, debug l1 fee recipient", "block_number", st.evm.Context.BlockNumber, "msg", st.msg, "cost", mgval)
+	}
 	return nil
 }
 
