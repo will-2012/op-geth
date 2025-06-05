@@ -240,7 +240,6 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		// execute the operation
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
-			log.Info("debug witness, failed to operation execute", "error", err)
 			break
 		}
 		pc++
@@ -248,6 +247,16 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 
 	if err == errStopToken {
 		err = nil // clear stop token error
+	}
+	if err != nil {
+		log.Info("debug witness, failed to operation execute",
+			"error", err,
+			"op", op,
+			"pc", pc,
+			"res", res,
+			"contract_addr", contract.Address(),
+			"contract_code_hash", contract.CodeHash,
+		)
 	}
 
 	return res, err
