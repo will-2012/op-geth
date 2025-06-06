@@ -362,6 +362,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 
 	// Short circuit if nothing changed, don't bother with hashing anything
 	if len(s.pendingStorage) == 0 {
+		log.Info("debug witness, updateTrie, no pending storage", "addr", s.address)
 		return s.trie, nil
 	}
 	// Track the amount of time wasted on updating the storage trie
@@ -388,6 +389,7 @@ func (s *stateObject) updateTrie() (Trie, error) {
 			s.db.setError(err)
 			return nil, err
 		}
+		log.Info("debug witness, updateTrie, has no prefetched trie", "addr", s.address)
 	}
 	// Insert all the pending storage updates into the trie
 	usedStorage := make([]common.Hash, 0, len(s.pendingStorage))

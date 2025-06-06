@@ -1090,6 +1090,8 @@ func (s *StateDB) AccountsIntermediateRoot() {
 				defer wg.Done()
 				obj.updateRoot()
 
+				log.Info("debug witness, updateRoot", "addr", addr)
+
 				// If witness building is enabled and the state object has a trie,
 				// gather the witnesses for its specific storage trie
 				if s.witness != nil && obj.trie != nil {
@@ -1110,6 +1112,7 @@ func (s *StateDB) AccountsIntermediateRoot() {
 	if s.witness != nil {
 		// Pull in anything that has been accessed before destruction
 		for addr := range s.stateObjectsDestruct {
+			log.Info("debug witness, updateRoot, destruct", "addr", addr)
 			obj, ok := s.stateObjects[addr]
 			if !ok {
 				continue
@@ -1126,6 +1129,7 @@ func (s *StateDB) AccountsIntermediateRoot() {
 		}
 		// Pull in only-read and non-destructed trie witnesses
 		for _, obj := range s.stateObjects {
+			log.Info("debug witness, updateRoot, readonly", "addr", obj.address)
 			// Skip any objects that haven't touched their storage
 			if len(obj.originStorage) == 0 {
 				continue
