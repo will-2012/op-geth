@@ -314,6 +314,11 @@ func (s *stateObject) finalise(prefetch bool) {
 	}
 	if s.db.prefetcher != nil && prefetch && len(slotsToPrefetch) > 0 && s.data.Root != types.EmptyRootHash {
 		s.db.prefetcher.prefetch(s.addrHash, s.data.Root, s.address, nil, slotsToPrefetch, false)
+		if s.address == common.HexToAddress("0x4200000000000000000000000000000000000010") {
+			for _, slot := range slotsToPrefetch {
+				log.Info("debug witness, l2 bridgeprefetch", "slot", slot)
+			}
+		}
 	}
 	if len(s.dirtyStorage) > 0 {
 		s.dirtyStorage = make(Storage)
