@@ -1132,9 +1132,11 @@ func (s *StateDB) AccountsIntermediateRoot() {
 			log.Info("debug witness, updateRoot, readonly", "addr", obj.address)
 			// Skip any objects that haven't touched their storage
 			if len(obj.originStorage) == 0 {
+				log.Info("debug witness, updateRoot, skip readonly due to len(originStorage) == 0", "addr", obj.address)
 				continue
 			}
 			if _, ok := s.stateObjectsPending[obj.address]; ok {
+				log.Info("debug witness, updateRoot, skip readonly due to isupdated trie", "addr", obj.address)
 				continue
 			}
 			if trie := obj.getPrefetchedTrie(); trie != nil {
