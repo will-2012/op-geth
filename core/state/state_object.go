@@ -295,7 +295,6 @@ func (s *stateObject) finalise(prefetch bool) {
 	for key, value := range s.dirtyStorage {
 		s.pendingStorage[key] = value
 		if value != s.originStorage[key] {
-			s.GetCommittedState(key)
 			slotsToPrefetch = append(slotsToPrefetch, key) // Copy needed for closure
 		}
 	}
@@ -361,9 +360,11 @@ func (s *stateObject) updateTrie() (Trie, error) {
 	s.finalise(false)
 
 	// Short circuit if nothing changed, don't bother with hashing anything
-	if len(s.pendingStorage) == 0 && len(s.originStorage) == 0 {
-		log.Info("debug witness, updateTrie, no pending storage", "addr", s.address)
-		return s.trie, nil
+	if len(s.pendingStorage) == 0 {
+		if s.db.witness != nil || len(s.originStorage) == 0 {
+			log.Info("debug witness, updateTrie, no pending/origin storage", "addr", s.address)
+			return s.trie, nil
+		}
 	}
 	log.Info("debug witness, updateTrie", "addr", s.address, "pending_len", len(s.pendingStorage), "origin_len", len(s.originStorage))
 	// Track the amount of time wasted on updating the storage trie
